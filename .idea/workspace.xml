@@ -4,10 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9a28c7bd-c89d-4693-85f5-bc437d53a01e" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eki_mf6_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/eki_mf6_utils.py" afterDir="false" />
-    </list>
+    <list default="true" id="9a28c7bd-c89d-4693-85f5-bc437d53a01e" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -49,7 +46,7 @@
     "Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.test_write_simulation.executor": "Run",
     "Python tests.Python tests in test_nested_domain.py.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "develop",
     "last_opened_file_path": "C:/Users/mmaneta/Documents/workspace/flopy",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -192,7 +189,7 @@
       <workItem from="1721235067464" duration="33914000" />
       <workItem from="1721416254246" duration="4257000" />
       <workItem from="1721585893182" duration="381000" />
-      <workItem from="1721588051349" duration="32703000" />
+      <workItem from="1721588051349" duration="33004000" />
     </task>
     <servers />
   </component>
