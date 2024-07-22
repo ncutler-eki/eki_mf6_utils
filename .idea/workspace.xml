@@ -5,16 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9a28c7bd-c89d-4693-85f5-bc437d53a01e" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/eki_mf6_utils.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/conda_reqs.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/setup.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/eki_mf6_utils.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_nested_domain.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/eki_mf6_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/eki_mf6_utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -43,31 +35,31 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomain.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomain.test_constructor.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomain.test_constructor_filenotfound.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomain.test_create_exchange_data.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomain.test_define_subdomain.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomain.test_nested_grid_happy_path.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomain.test_plot_grid.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.test_refine_grid_data.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.test_write_simulation.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.Python tests in test_nested_domain.py.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/mmaneta/AppData/Local/anaconda3/condabin/conda.bat&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;org.jetbrains.plugins.notebooks.jupyter.connections.configuration.JupyterServerConfigurable&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python tests.Python tests for test_nested_domain.TestNestedDomain.executor": "Run",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomain.test_constructor.executor": "Debug",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomain.test_constructor_filenotfound.executor": "Debug",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomain.test_create_exchange_data.executor": "Debug",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomain.test_define_subdomain.executor": "Debug",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomain.test_nested_grid_happy_path.executor": "Debug",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomain.test_plot_grid.executor": "Debug",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.executor": "Debug",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.test_refine_grid_data.executor": "Debug",
+    "Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.test_write_simulation.executor": "Run",
+    "Python tests.Python tests in test_nested_domain.py.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "C:/Users/mmaneta/Documents/workspace/flopy",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "org.jetbrains.plugins.notebooks.jupyter.connections.configuration.JupyterServerConfigurable",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\mmaneta\Documents\workspace\eki_mf6_utils" />
@@ -81,7 +73,23 @@
       </set>
     </option>
   </component>
-  <component name="RunManager" selected="Python tests.Python tests for test_nested_domain.TestNestedDomain.test_nested_grid_happy_path">
+  <component name="RunManager" selected="Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.test_refine_grid_data">
+    <configuration name="Python tests for test_nested_domain.TestNestedDomainSimulation" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
+      <module name="eki_mf6_utils" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tests" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;test_nested_domain.TestNestedDomainSimulation&quot;" />
+      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
+      <method v="2" />
+    </configuration>
     <configuration name="Python tests for test_nested_domain.TestNestedDomainSimulation.test_refine_grid_data" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
       <module name="eki_mf6_utils" />
       <option name="ENV_FILES" value="" />
@@ -146,29 +154,13 @@
       <option name="_new_targetType" value="&quot;PYTHON&quot;" />
       <method v="2" />
     </configuration>
-    <configuration name="Python tests in test_nested_domain.py" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
-      <module name="eki_mf6_utils" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tests" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;$PROJECT_DIR$/tests/test_nested_domain.py&quot;" />
-      <option name="_new_targetType" value="&quot;PATH&quot;" />
-      <method v="2" />
-    </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python tests.Python tests for test_nested_domain.TestNestedDomain.test_nested_grid_happy_path" />
         <item itemvalue="Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.test_refine_grid_data" />
-        <item itemvalue="Python tests.Python tests for test_nested_domain.TestNestedDomain.test_define_subdomain" />
-        <item itemvalue="Python tests.Python tests in test_nested_domain.py" />
         <item itemvalue="Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation.test_write_simulation" />
+        <item itemvalue="Python tests.Python tests for test_nested_domain.TestNestedDomainSimulation" />
+        <item itemvalue="Python tests.Python tests for test_nested_domain.TestNestedDomain.test_nested_grid_happy_path" />
+        <item itemvalue="Python tests.Python tests for test_nested_domain.TestNestedDomain.test_define_subdomain" />
       </list>
     </recent_temporary>
   </component>
@@ -199,6 +191,8 @@
       <workItem from="1719869491307" duration="2026000" />
       <workItem from="1721235067464" duration="33914000" />
       <workItem from="1721416254246" duration="4257000" />
+      <workItem from="1721585893182" duration="381000" />
+      <workItem from="1721588051349" duration="32703000" />
     </task>
     <servers />
   </component>
@@ -210,33 +204,18 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/tests/test_nested_domain.py</url>
-          <line>90</line>
-          <option name="timeStamp" value="38" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/tests/test_nested_domain.py</url>
-          <line>87</line>
-          <option name="timeStamp" value="50" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/eki_mf6_utils.py</url>
-          <line>333</line>
-          <option name="timeStamp" value="54" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/tests/test_nested_domain.py</url>
           <line>39</line>
           <option name="timeStamp" value="57" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/tests/test_nested_domain.py</url>
-          <line>72</line>
-          <option name="timeStamp" value="58" />
+          <url>file://$PROJECT_DIR$/src/eki_mf6_utils.py</url>
+          <line>380</line>
+          <option name="timeStamp" value="71" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/tests/test_nested_domain.py</url>
-          <line>62</line>
-          <option name="timeStamp" value="59" />
+          <url>file://$PROJECT_DIR$/src/eki_mf6_utils.py</url>
+          <line>365</line>
+          <option name="timeStamp" value="78" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
@@ -247,6 +226,6 @@
     </watches-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/eki_mf6_utils$.coverage" NAME=" Coverage Results" MODIFIED="1721283322334" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
+    <SUITE FILE_PATH="coverage/eki_mf6_utils$.coverage" NAME=" Coverage Results" MODIFIED="1721631692980" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
   </component>
 </project>
