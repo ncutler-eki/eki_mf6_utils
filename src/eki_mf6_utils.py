@@ -98,7 +98,7 @@ class NestedDomain:
                 delcp=self.gwf.dis.delc.data,
                 topp=self.gwf.dis.top.data,
                 botmp=self.gwf.dis.botm.data,
-                idomainp=idomain,
+                idomainp=idomain,  # self.gwf.dis.idomain.data,
                 ncpp=num_cells_per_parent_cell,
                 ncppl=num_layers_per_parent_layer,
                 xllp=self.gwf.modelgrid.xoffset,
@@ -211,7 +211,7 @@ class NestedDomainSimulation:
         for name, lgr in zip(self.lst_subdomain_names, self.lst_subdomain_lgr):
             for pck_name in parent_model.package_names:
                 pck = parent_model.get_package(pck_name)
-                if pck.package_type in ['ic', 'sto', 'npf', 'rcha']:
+                if pck.package_type in ['ic', 'sto', 'npf', 'rcha', 'maw']:
                     logger.info(f"Package {pck_name} with {pck.package_type} found and will be regridded")
                     self.regrid_package(pck, parent_model, self.sim.get_model(name), lgr, name)
 
