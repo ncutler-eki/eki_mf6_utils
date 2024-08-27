@@ -1,5 +1,6 @@
 from functools import singledispatchmethod
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import rasterio as rio
 from rasterio import features
@@ -29,8 +30,6 @@ class NestedDomain:
             modelgrid = self.gwf.modelgrid
             self.parent_model_name = gwf.name
         self.parent_domain = modelgrid
-
-
 
         self.lst_subdomain_names = []
         self.lst_subdomain_lgr = []
@@ -352,6 +351,103 @@ class NestedDomainSimulation:
                              )
 
         return cpkg
+
+    @regrid_package.register
+    def _regrid_package(self,
+                        pkg: flopy.mf6.modflow.mfgwfmaw.ModflowGwfmaw,
+                        pmodel: flopy.mf6.ModflowGwf,
+                        cmodel: flopy.mf6.ModflowGwf,
+                        lgr: flopy.utils.lgrutil.Lgr,
+                        cname: str) -> flopy.mf6.modflow.mfgwfmaw.ModflowGwfmaw:
+
+        fn_head_records = None
+        fn_budget_records = None
+        if pkg.head_filerecord.array is not None:
+            fn_head_records = "cname_" + pkg.head_filerecord
+        if pkg.budget_filerecord.array is not None:
+            fn_budget_records = "cname_" + pkg.budget_filerecord
+
+        print(f"Updating well connections in maw package {pkg.name}")
+        # find subset of wells within the child grid
+        lst_c_connections = []
+        for w in pkg.connectiondata.array.T:
+            l, r, c = w[2]
+            if ((l >= lgr.nplbeg) &
+                    (l <= lgr.nplend) &
+                    (r >= lgr.nprbeg) &
+                    (r <= lgr.nprend) &
+                    (c >= lgr.npcbeg) &
+                    (c <= lgr.npcend)):
+                lst_c_connections.append(w)
+
+        df_cconns = pd.DataFrame.from_records(lst_c_connections,
+                                              columns=lst_c_connections[0].dtype.names)
+        df_lst_rec = df_cconns.groupby(df_cconns['ifno']).apply(self._update_connection_records, lgr=lgr)
+        c_conns = df_lst_rec.to_records(index=False)
+
+        # update ngwfnodes
+        df_packagedata = pd.DataFrame.from_records(pkg.packagedata.array, columns=pkg.packagedata.dtype.names)
+        df_c_packagedata = df_packagedata.loc[df_cconns['ifno'].unique()]
+        df_c_packagedata['ngwfnodes'] = df_lst_rec.groupby(level=0).size()
+        c_packagedata = df_c_packagedata.to_records(index=False)
+
+        # update stress period data
+        dct_c_sp = {}
+        for i, sp in enumerate(pkg.perioddata.array):
+            dct_c_sp[i] = pd.DataFrame.from_records(sp,
+                                          columns=sp.dtype.names
+                                          ).set_index('ifno').loc[df_c_packagedata.index].to_records(index=True)
+
+
+        cpkg = pkg.__class__(cmodel,
+                             save_flows=True,
+                             print_input=pkg.print_input,
+                             print_head=pkg.print_head,
+                             boundnames=pkg.boundnames,
+                             mover=pkg.mover,
+                             head_filerecord=fn_head_records,
+                             budget_filerecord=fn_budget_records,
+                             no_well_storage=pkg.no_well_storage,
+                             flow_correction=pkg.flow_correction,
+                             flowing_wells=pkg.flowing_wells,
+                             packagedata=c_packagedata,
+                             connectiondata=c_conns,
+                             perioddata=dct_c_sp
+                             )
+        return cpkg
+
+    @staticmethod
+    def get_child_ij_indices(ip, jp, lgr):
+        ic = (ip - lgr.nprbeg) * lgr.ncpp
+        jc = (jp - lgr.npcbeg) * lgr.ncpp
+        return ic, jc
+
+    @staticmethod
+    def get_child_layer_connections(icounter, kp, lgr):
+        n_sublayers = lgr.ncppl[kp]
+        iconns = np.arange(icounter, icounter+n_sublayers)
+        icounter += n_sublayers
+        lstart = lgr.ncppl.cumsum()[kp] - n_sublayers
+        kcs = np.arange(lstart, lgr.ncppl.cumsum()[kp])
+        return icounter, iconns, kcs
+
+    def _update_connection_records(self, recs, lgr):
+        next_iconn = 0
+        lst_recs = []
+        for i, rec in recs.iterrows():
+
+            kp, ip, jp = rec['cellid']
+            ic, jc = self.get_child_ij_indices(ip, jp, lgr)
+            next_iconn, iconns, clyrs = self.get_child_layer_connections(next_iconn, kp, lgr)
+            for iconn, kc in zip(iconns, clyrs):
+                r = np.copy(rec)
+                # copied array is not longer a rec array.
+                # Assign values by position index
+                r[1] = iconn
+                r[2] = (kc, ic, jc)
+                lst_recs.append(r)
+
+        return pd.DataFrame(lst_recs)
 
     def write_simulation(self, sim_ws: str = None):
         if sim_ws is not None:
