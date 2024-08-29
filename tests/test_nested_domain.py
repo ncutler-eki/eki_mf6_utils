@@ -112,6 +112,7 @@ class TestNestedDomainSimulation(unittest.TestCase):
         self.nd_sim.refine_grid_data()
 
     def test_refine_grid_data_with_sfr(self):
+
         with open('data/gwf/nd_simul_irregu_domain_sfr.pckl', 'rb') as f:
             nd_sim = pickle.load(f)
 

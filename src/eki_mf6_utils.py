@@ -462,12 +462,20 @@ class NestedDomainSimulation:
 
     def sfr_reach_data(self, lgr):
 
+        # retrieve child modelgrid and initialize a GridIntersect object
+        mgrid = lgr.child.modelgrid
+        ix = GridIntersect(mgrid, method='structured')
+
+        # load stream network using fiona, parse geometries as Multiline shapely, and properties as dataframe
         shp_features = fiona.open(self.streams_shp)
         lst_recs = [feat.geometry['coordinates'] for feat in shp_features]
-        mgrid = lgr.child.modelgrid
+        df_reach_data_p = pd.DataFrame.from_records([feat.properties for feat in shp_features])
 
-        ix = GridIntersect(mgrid, method='structured')
-        df_reach_data = pd.DataFrame.from_records(ix.intersect(MultiLineString(lst_recs)))
+        # intersect multilinestring with child grid to obtain r,c of child grid and reach lengths
+        linestring_reaches = ix.intersect(MultiLineString(lst_recs))
+        df_reach_data_c = pd.DataFrame.from_records(linestring_reaches)
+
+
 
 
     @staticmethod
