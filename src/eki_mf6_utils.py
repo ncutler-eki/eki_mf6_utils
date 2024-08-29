@@ -1,3 +1,8 @@
+"""
+Author: Marco Maneta
+Email: mmaneta@ekiconsult.com
+"""
+
 from functools import singledispatchmethod
 import numpy as np
 import pandas as pd
@@ -5,10 +10,12 @@ import matplotlib.pyplot as plt
 import rasterio as rio
 from rasterio import features
 import fiona
+from shapely.geometry import MultiLineString
 import flopy
 from flopy.mf6.mfbase import MFDataException
 from flopy.utils.lgrutil import Lgr
 from flopy.utils import Raster
+from flopy.utils import GridIntersect
 
 from logging import getLogger
 
@@ -51,7 +58,7 @@ class NestedDomain:
                          jstop: int = None,
                          kstart: int = None,
                          kstop: int = None,
-                         shp_file: str = None,
+                         nested_domain_shp: str = None,
                          feature_field: str = 'id',
                          xoff: float = 0.0,
                          yoff: float = 0.0,
@@ -59,18 +66,18 @@ class NestedDomain:
                          num_cells_per_parent_cell: int = 3,
                          num_layers_per_parent_layer: list = 1):
 
-        if istart == istop == jstart == jstop == kstart == kstop == shp_file == None:
+        if istart == istop == jstart == jstop == kstart == kstop == nested_domain_shp is None:
             print("Either the bounding box or a shapefile to define the subdomain is required")
             return
 
         self.lst_subdomain_names.append(name)
         idomain = self.gwf.dis.idomain.get_data()
 
-        if shp_file is None:
-            ## deactivate the cells in the parent domain where the child grid will be placed
+        if nested_domain_shp is None:
+            # deactivate the cells in the parent domain where the child grid will be placed
             idomain[kstart:kstop + 1, istart:istop + 1, jstart:jstop + 1] = 2
         else:
-            pols = fiona.open(shp_file)
+            pols = fiona.open(nested_domain_shp)
             self.gwf.modelgrid.set_coord_info(xoff=xoff, yoff=yoff, angrot=angrot, crs=pols.crs)
             rst_tpl = Raster.raster_from_array(np.zeros((self.gwf.dis.nrow.data,
                                                          self.gwf.dis.ncol.data)),
@@ -87,8 +94,6 @@ class NestedDomain:
                                             all_touched=True)
                 ir, ic = burned.nonzero()
                 idomain[kstart:kstop, ir, ic] = 2
-
-
 
         self.lst_subdomain_lgr.append(
             Lgr(nlayp=self.gwf.dis.nlay.data,
@@ -108,7 +113,7 @@ class NestedDomain:
 
         self.gwf.dis.idomain.set_data(self.lst_subdomain_lgr[-1].parent.idomain)
 
-        #self.gwf.dis.idomain.set_data(idomain)
+        # self.gwf.dis.idomain.set_data(idomain)
         self._display_domain_info()
 
     def _create_exchange_data(self, lgr, subdomain_name: str):
@@ -164,12 +169,19 @@ class NestedDomain:
 
 
 class NestedDomainSimulation:
-    def __init__(self, sim, parent_model_name, lst_subdomain_names, lst_subdomain_lgr):
+    def __init__(self,
+                 sim,
+                 parent_model_name,
+                 lst_subdomain_names,
+                 lst_subdomain_lgr,
+                 ):
         try:
             self.sim = sim
             self.lst_subdomain_names = lst_subdomain_names
             self.lst_subdomain_lgr = lst_subdomain_lgr
             self.parent_model_name = parent_model_name
+
+            self.streams_shp = None
 
             self._create_core_model_structure()
 
@@ -180,7 +192,7 @@ class NestedDomainSimulation:
         logger.info(f"Creating core model structure for subdomain {subdomain_name}")
         lgrc = lgr.child
         gwf = flopy.mf6.ModflowGwf(self.sim, modelname=subdomain_name, save_flows=True)
-        #newton on with under relaxation
+        # Newton on with under relaxation
         gwf.name_file.newtonoptions="UNDER_RELAXATION"
         dis = flopy.mf6.ModflowGwfdis(gwf, **lgrc.get_gridprops_dis6())
         oc = flopy.mf6.ModflowGwfoc(gwf,
@@ -198,7 +210,7 @@ class NestedDomainSimulation:
             ims_exists = False
 
         if ims_exists:
-            self.sim.ims.linear_acceleration = "bicgstab"  #self.sim.ims.build_mfdata("linear_acceleration", "bicgstab")
+            self.sim.ims.linear_acceleration = "bicgstab"  # self.sim.ims.build_mfdata("linear_acceleration", "bicgstab")
         else:
             ims_flow = flopy.mf6.ModflowIms(
                 self.sim, linear_acceleration="BICGSTAB",
@@ -206,12 +218,14 @@ class NestedDomainSimulation:
 
         self.sim.register_ims_package(self.sim.ims, [self.parent_model_name] + self.lst_subdomain_names)
 
-    def refine_grid_data(self):
+    def refine_grid_data(self,
+                         streams_shp: str = None):
+        self.streams_shp = streams_shp
         parent_model = self.sim.get_model(self.parent_model_name)
         for name, lgr in zip(self.lst_subdomain_names, self.lst_subdomain_lgr):
             for pck_name in parent_model.package_names:
                 pck = parent_model.get_package(pck_name)
-                if pck.package_type in ['ic', 'sto', 'npf', 'rcha', 'maw']:
+                if pck.package_type in ['ic', 'sto', 'npf', 'rcha', 'maw', 'sfr']:
                     logger.info(f"Package {pck_name} with {pck.package_type} found and will be regridded")
                     self.regrid_package(pck, parent_model, self.sim.get_model(name), lgr, name)
 
@@ -243,7 +257,7 @@ class NestedDomainSimulation:
             return
 
         dct_regridded_array = {}
-        for k,v in array3d.items():
+        for k, v in array3d.items():
             print(f"\tRegridding sp {k}")
             data_ = lgr.get_replicated_parent_array(v)
             dct_regridded_array[k] = data_
@@ -363,9 +377,9 @@ class NestedDomainSimulation:
         fn_head_records = None
         fn_budget_records = None
         if pkg.head_filerecord.array is not None:
-            fn_head_records = "cname_" + pkg.head_filerecord
+            fn_head_records = "cname_" + pkg.head_filerecord[0][0]
         if pkg.budget_filerecord.array is not None:
-            fn_budget_records = "cname_" + pkg.budget_filerecord
+            fn_budget_records = "cname_" + pkg.budget_filerecord[0][0]
 
         print(f"Updating well connections in maw package {pkg.name}")
         # find subset of wells within the child grid
@@ -398,7 +412,6 @@ class NestedDomainSimulation:
                                           columns=sp.dtype.names
                                           ).set_index('ifno').loc[df_c_packagedata.index].to_records(index=True)
 
-
         cpkg = pkg.__class__(cmodel,
                              save_flows=True,
                              print_input=pkg.print_input,
@@ -415,6 +428,47 @@ class NestedDomainSimulation:
                              perioddata=dct_c_sp
                              )
         return cpkg
+
+    @regrid_package.register
+    def _(self,
+          pkg: flopy.mf6.modflow.mfgwfsfr.ModflowGwfsfr,
+          pmodel: flopy.mf6.ModflowGwf,
+          cmodel: flopy.mf6.ModflowGwf,
+          lgr: flopy.utils.lgrutil.Lgr,
+          cname: str) -> flopy.mf6.modflow.mfgwfsfr.ModflowGwfsfr:
+
+        fn_stage_records = None
+        fn_budget_records = None
+        if pkg.stage_filerecord.array is not None:
+            fn_stage_records = "cname_" + pkg.stage_filerecord.array[0][0]
+        if pkg.budget_filerecord.array is not None:
+            fn_budget_records = "cname_" + pkg.budget_filerecord.array[0][0]
+
+        reach_data = self.sfr_reach_data(lgr)
+
+        cpkg = pkg.__class__(cmodel,
+                             save_flows=pkg.save_flows,
+                             stage_filerecord=fn_stage_records,
+                             budget_filerecord=fn_budget_records,
+                             mover=True,
+                             maximum_picard_iterations=pkg.maximum_picard_iterations,
+                             maximum_iterations=pkg.maximum_iterations,
+                             maximum_depth_change=pkg.maximum_depth_change,
+                             unit_conversion=pkg.unit_conversion,
+                             length_conversion=pkg.length_conversion,
+                             time_conversion=pkg.time_conversion,)
+
+        return cpkg
+
+    def sfr_reach_data(self, lgr):
+
+        shp_features = fiona.open(self.streams_shp)
+        lst_recs = [feat.geometry['coordinates'] for feat in shp_features]
+        mgrid = lgr.child.modelgrid
+
+        ix = GridIntersect(mgrid, method='structured')
+        df_reach_data = pd.DataFrame.from_records(ix.intersect(MultiLineString(lst_recs)))
+
 
     @staticmethod
     def get_child_ij_indices(ip, jp, lgr):
