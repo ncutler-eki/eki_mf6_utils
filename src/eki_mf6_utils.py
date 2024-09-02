@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import rasterio as rio
 from rasterio import features
 import fiona
-from shapely.geometry import MultiLineString
+from shapely.geometry import MultiLineString, shape, mapping
 import flopy
 from flopy.mf6.mfbase import MFDataException
 from flopy.utils.lgrutil import Lgr
@@ -444,7 +444,8 @@ class NestedDomainSimulation:
         if pkg.budget_filerecord.array is not None:
             fn_budget_records = "cname_" + pkg.budget_filerecord.array[0][0]
 
-        reach_data = self.sfr_reach_data(lgr)
+        connection_data = self.sfr_connection_data(pkg, lgr)
+        reach_data = self.sfr_reach_data(pkg, lgr)
 
         cpkg = pkg.__class__(cmodel,
                              save_flows=pkg.save_flows,
@@ -460,20 +461,122 @@ class NestedDomainSimulation:
 
         return cpkg
 
-    def sfr_reach_data(self, lgr):
+    def sfr_connection_data(self, pkg, lgr):
+        conn = pkg.connectiondata
 
         # retrieve child modelgrid and initialize a GridIntersect object
         mgrid = lgr.child.modelgrid
         ix = GridIntersect(mgrid, method='structured')
 
-        # load stream network using fiona, parse geometries as Multiline shapely, and properties as dataframe
+        # load stream network using fiona, parse geometries as Multiline shapely
         shp_features = fiona.open(self.streams_shp)
         lst_recs = [feat.geometry['coordinates'] for feat in shp_features]
-        df_reach_data_p = pd.DataFrame.from_records([feat.properties for feat in shp_features])
 
         # intersect multilinestring with child grid to obtain r,c of child grid and reach lengths
         linestring_reaches = ix.intersect(MultiLineString(lst_recs))
         df_reach_data_c = pd.DataFrame.from_records(linestring_reaches)
+
+        for idx, cellidc in enumerate(df_reach_data_c['cellids']):
+            _, ip, jp = lgr.get_parent_indices(0, *cellidc)
+            ip,jp
+
+        return
+
+
+    def sfr_reach_data(self, pkg, lgr):
+
+        df_conn = pd.DataFrame(pkg.connectiondata.array)
+        # retrieve child modelgrid and initialize a GridIntersect object
+        mgrid = lgr.child.modelgrid
+        ix = GridIntersect(mgrid, method='structured')
+
+        df_reach_data_p = pd.DataFrame.from_records(pkg.packagedata.array)
+
+        # load stream network using fiona, parse geometries as Multiline shapely
+        with fiona.open(self.streams_shp) as shp_features:
+            lst_recs = [feat.geometry['coordinates'] for feat in shp_features]
+            # lst_shapes = [mapping(shape(elem['geometry'])) for elem in  shp_features]
+            # geom = [feat.geometry for feat in shp_features]
+
+            # Parse stream network properties as dataframe
+            df_reach_data_shape_p = pd.DataFrame.from_records([feat.properties for feat in shp_features])
+
+            conns = df_conn.set_index('ifno')
+            lst_cgeom = []
+            for i, reachp in df_reach_data_p.iterrows():
+                ifno = reachp['ifno']
+                idx = df_reach_data_shape_p[df_reach_data_shape_p['ReachID'] == ifno+1].index.item()
+                cgeom = ix.intersect(shape(shp_features[idx].geometry))
+                cellidp = reachp['cellid']
+
+                if (cgeom.size == 0) or (lgr.parent.idomain[cellidp] == 1):
+                    continue
+
+                tmp_df = pd.DataFrame.from_records(cgeom)
+                tmp_df['ifnop'] = ifno
+
+                tmp_df = tmp_df.join(conns, on='ifnop')
+                lst_cgeom.append(tmp_df)
+
+            df_reach_data_c = pd.concat(lst_cgeom)
+            df_reach_data_c = df_reach_data_c.reset_index(drop=True)
+            df_reach_data_c.index.name = 'ifno'
+            df_reach_data_c.filter(like='ic_').map(
+                lambda x: math.copysign(df_reach_data_c[df_reach_data_c['ifnop'] == abs(x)].index.min(), x))
+
+
+
+
+
+
+        # intersect multilinestring with child grid to obtain r,c of child grid and reach lengths
+        linestring_reaches = ix.intersect(MultiLineString(lst_recs))
+        df_reach_data_c = pd.DataFrame.from_records(linestring_reaches)
+
+        # populate dataframe with information required by SFR package
+        # get_parent_indices does not allow vectorization, hence the for loop
+        # TODO: column names of properties
+        lst_rows_p = []
+        new_cols = {'rwid': np.nan,
+                'rgrd': np.nan,
+                'rtp': np.nan,
+                'rbth': np.nan,
+                'rhk': np.nan,
+                'man': np.nan,
+                'ncon': np.nan,
+                'ustrf': np.nan,
+                'ndv': np.nan,
+                'row_p': np.nan,
+                'col_p': np.nan,
+                'ifnop': np.nan}
+
+        df_reach_data_c = df_reach_data_c.assign(**new_cols)
+        for idx, cellidc in enumerate(df_reach_data_c['cellids']):
+            _, ip, jp = lgr.get_parent_indices(0, *cellidc)
+            if isinstance(df_reach_data_c.iloc[idx]['ixshapes'], MultiLineString):
+                continue
+
+            df_conn['ifno']
+            df_tmp_row = df_reach_data_p[df_reach_data_p['cellid'] == (0, ip, jp)]
+            df_reach_data_c.loc[idx, 'ifnop'] = df_tmp_row['ifno'].item()
+            df_reach_data_c.loc[idx, 'rwid'] = df_tmp_row['rwid'].item()
+            df_reach_data_c.loc[idx, 'rgrd'] = df_tmp_row['rgrd'].item()
+            df_reach_data_c.loc[idx, 'rtp'] = df_tmp_row['rtp'].item()
+            df_reach_data_c.loc[idx, 'rbth'] = df_tmp_row['rbth'].item()
+            df_reach_data_c.loc[idx, 'rhk'] = df_tmp_row['rhk'].item()
+            df_reach_data_c.loc[idx, 'man'] = df_tmp_row['man'].item()
+            df_reach_data_c.loc[idx, 'ustrf'] = df_tmp_row['ustrf'].item()
+            df_reach_data_c.loc[idx, 'ndv'] = df_tmp_row['ndv'].item()
+
+            # df_reach_data_p[(df_reach_data_p['row'] - 1 == ip) & (
+            #             df_reach_data_p['column_'] - 1 == jp)]
+            # lst_rows_p.append(
+            #     df_reach_data_p[(df_reach_data_p['row'] - 1 == ip) & (df_reach_data_p['column_'] - 1 == jp)]) # TODO: columns of properties
+            # )
+        df_reach_data_c = df_reach_data_c.join(df_conn.set_index('ifno'), how='left')
+        return df_reach_data_c
+
+
 
 
 
