@@ -3,23 +3,25 @@ Author: Marco Maneta
 Email: mmaneta@ekiconsult.com
 """
 
+import math
 from functools import singledispatchmethod
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import rasterio as rio
-from rasterio import features
-import fiona
-from shapely.geometry import MultiLineString, shape, mapping
-import flopy
-from flopy.mf6.mfbase import MFDataException
-from flopy.utils.lgrutil import Lgr
-from flopy.utils import Raster
-from flopy.utils import GridIntersect
-
 from logging import getLogger
 
+import fiona
+import flopy
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from flopy.mf6.mfbase import MFDataException
+from flopy.utils import GridIntersect
+from flopy.utils import Raster
+from flopy.utils.lgrutil import Lgr
+from rasterio import features
+from shapely.geometry import MultiLineString, shape
+
 logger = getLogger(__name__)
+
+REACH_FLAG = 999999
 
 
 class NestedDomain:
@@ -89,7 +91,7 @@ class NestedDomain:
                 burned = features.rasterize(shapes=shapes,
                                             fill=0,
                                             out_shape=(self.gwf.dis.nrow.data,
-                                                         self.gwf.dis.ncol.data),
+                                                       self.gwf.dis.ncol.data),
                                             transform=rst_tpl.transform,
                                             all_touched=True)
                 ir, ic = burned.nonzero()
@@ -143,11 +145,11 @@ class NestedDomain:
                                       self.lst_subdomain_lgr)
 
     def _display_domain_info(self):
-        for i,d in enumerate(self.lst_subdomain_names):
+        for i, d in enumerate(self.lst_subdomain_names):
 
             print(f"DOMAIN {d}:")
-            for name, p in zip(["Parent grid", "Nested grid"], [self.lst_subdomain_lgr[i].parent, self.lst_subdomain_lgr[i].child]):
-
+            for name, p in zip(["Parent grid", "Nested grid"],
+                               [self.lst_subdomain_lgr[i].parent, self.lst_subdomain_lgr[i].child]):
                 print(f"\t{d}: {name}")
                 print(f"\t\tNum layers {p.nlay}")
                 print(f"\t\tNum rows {p.nrow}")
@@ -159,8 +161,8 @@ class NestedDomain:
 
     def plot_grid(self):
         fig = plt.figure(figsize=(10, 10))
-        for i,d in enumerate(self.lst_subdomain_names):
-            ax = fig.add_subplot(i+1, 1, i+1, aspect='equal')
+        for i, d in enumerate(self.lst_subdomain_names):
+            ax = fig.add_subplot(i + 1, 1, i + 1, aspect='equal')
             mgp = self.lst_subdomain_lgr[i].parent.modelgrid
             mgc = self.lst_subdomain_lgr[i].child.modelgrid
             mgc.plot(ax=ax, color='r')
@@ -193,7 +195,7 @@ class NestedDomainSimulation:
         lgrc = lgr.child
         gwf = flopy.mf6.ModflowGwf(self.sim, modelname=subdomain_name, save_flows=True)
         # Newton on with under relaxation
-        gwf.name_file.newtonoptions="UNDER_RELAXATION"
+        gwf.name_file.newtonoptions = "UNDER_RELAXATION"
         dis = flopy.mf6.ModflowGwfdis(gwf, **lgrc.get_gridprops_dis6())
         oc = flopy.mf6.ModflowGwfoc(gwf,
                                     budget_filerecord=f"{subdomain_name}.cbb",
@@ -294,7 +296,7 @@ class NestedDomainSimulation:
         data_arrays = [getattr(pkg, n).get_data() for n in
                        ["ss", "sy", "iconvert", ]]
         ssc, syc, iconvertc = [self._regrid_data_layers(data, lgr) for data
-                                                                          in data_arrays]
+                               in data_arrays]
 
         if pkg.has_stress_period_data:
             raise NotImplementedError("regridding of data for tvs package not implemented")
@@ -409,8 +411,9 @@ class NestedDomainSimulation:
         dct_c_sp = {}
         for i, sp in enumerate(pkg.perioddata.array):
             dct_c_sp[i] = pd.DataFrame.from_records(sp,
-                                          columns=sp.dtype.names
-                                          ).set_index('ifno').loc[df_c_packagedata.index].to_records(index=True)
+                                                    columns=sp.dtype.names
+                                                    ).set_index('ifno').loc[df_c_packagedata.index].to_records(
+                index=True)
 
         cpkg = pkg.__class__(cmodel,
                              save_flows=True,
@@ -444,7 +447,6 @@ class NestedDomainSimulation:
         if pkg.budget_filerecord.array is not None:
             fn_budget_records = "cname_" + pkg.budget_filerecord.array[0][0]
 
-        connection_data = self.sfr_connection_data(pkg, lgr)
         reach_data = self.sfr_reach_data(pkg, lgr)
 
         cpkg = pkg.__class__(cmodel,
@@ -457,31 +459,9 @@ class NestedDomainSimulation:
                              maximum_depth_change=pkg.maximum_depth_change,
                              unit_conversion=pkg.unit_conversion,
                              length_conversion=pkg.length_conversion,
-                             time_conversion=pkg.time_conversion,)
+                             time_conversion=pkg.time_conversion, )
 
         return cpkg
-
-    def sfr_connection_data(self, pkg, lgr):
-        conn = pkg.connectiondata
-
-        # retrieve child modelgrid and initialize a GridIntersect object
-        mgrid = lgr.child.modelgrid
-        ix = GridIntersect(mgrid, method='structured')
-
-        # load stream network using fiona, parse geometries as Multiline shapely
-        shp_features = fiona.open(self.streams_shp)
-        lst_recs = [feat.geometry['coordinates'] for feat in shp_features]
-
-        # intersect multilinestring with child grid to obtain r,c of child grid and reach lengths
-        linestring_reaches = ix.intersect(MultiLineString(lst_recs))
-        df_reach_data_c = pd.DataFrame.from_records(linestring_reaches)
-
-        for idx, cellidc in enumerate(df_reach_data_c['cellids']):
-            _, ip, jp = lgr.get_parent_indices(0, *cellidc)
-            ip,jp
-
-        return
-
 
     def sfr_reach_data(self, pkg, lgr):
 
@@ -494,9 +474,7 @@ class NestedDomainSimulation:
 
         # load stream network using fiona, parse geometries as Multiline shapely
         with fiona.open(self.streams_shp) as shp_features:
-            lst_recs = [feat.geometry['coordinates'] for feat in shp_features]
-            # lst_shapes = [mapping(shape(elem['geometry'])) for elem in  shp_features]
-            # geom = [feat.geometry for feat in shp_features]
+           # lst_recs = [feat.geometry['coordinates'] for feat in shp_features]
 
             # Parse stream network properties as dataframe
             df_reach_data_shape_p = pd.DataFrame.from_records([feat.properties for feat in shp_features])
@@ -505,7 +483,7 @@ class NestedDomainSimulation:
             lst_cgeom = []
             for i, reachp in df_reach_data_p.iterrows():
                 ifno = reachp['ifno']
-                idx = df_reach_data_shape_p[df_reach_data_shape_p['ReachID'] == ifno+1].index.item()
+                idx = df_reach_data_shape_p[df_reach_data_shape_p['ReachID'] == ifno + 1].index.item()
                 cgeom = ix.intersect(shape(shp_features[idx].geometry))
                 cellidp = reachp['cellid']
 
@@ -516,70 +494,113 @@ class NestedDomainSimulation:
                 tmp_df['ifnop'] = ifno
 
                 tmp_df = tmp_df.join(conns, on='ifnop')
+                if tmp_df.shape[0] > 1:
+                    ls_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
+                    tmp_df.iloc[0, ls_idx] = tmp_df.iloc[0, ls_idx].map(lambda x: -REACH_FLAG if x < 0 else x)
+                    tmp_df.iloc[1:-1, ls_idx] = tmp_df.iloc[1:-1, ls_idx].map(lambda x: np.nan)
+                    tmp_df.iloc[-1, ls_idx] = tmp_df.iloc[-1, ls_idx].map(lambda x: REACH_FLAG if x > 0 else x)
+
                 lst_cgeom.append(tmp_df)
 
-            df_reach_data_c = pd.concat(lst_cgeom)
-            df_reach_data_c = df_reach_data_c.reset_index(drop=True)
-            df_reach_data_c.index.name = 'ifno'
-            df_reach_data_c.filter(like='ic_').map(
-                lambda x: math.copysign(df_reach_data_c[df_reach_data_c['ifnop'] == abs(x)].index.min(), x))
+        df_reach_data_c = pd.concat(lst_cgeom)
+        df_reach_data_c = df_reach_data_c.reset_index(drop=True)
+        df_reach_data_c.index.name = 'ifno'
+
+
+        lst_cgeom = []
+        for ifnop, tmp_df in df_reach_data_c.groupby('ifnop'):
+            ls_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
+            tmp_df.iloc[:, ls_idx] = tmp_df.iloc[:, ls_idx].map(self._map_connections_with_parent_segments,
+                                                                df=df_reach_data_c, na_action='ignore')
+            if tmp_df.shape[0] > 1:
+                tmp_df.iloc[0, ls_idx] = tmp_df.iloc[:1, ls_idx].map(
+                    lambda x: -(tmp_df.index[0] + 1) if abs(x) == REACH_FLAG else x)
+                tmp_df.iloc[1:-1, ls_idx[0]] = -(tmp_df.iloc[1:-1, ls_idx[0]].index + 1)
+                tmp_df.iloc[1:-1, ls_idx[1]] = tmp_df.iloc[1:-1, ls_idx[1]].index - 1
+                tmp_df.iloc[-1, ls_idx] = tmp_df.iloc[-1:, ls_idx].map(
+                    lambda x: tmp_df.index[-1] - 1 if abs(x) == REACH_FLAG else x)
+
+            lst_cgeom.append(tmp_df)
+
+        df_reach_data_c = pd.concat(lst_cgeom)
+
+        df_reach_data_c = df_reach_data_c.merge(df_reach_data_p, left_on='ifnop', right_on='ifno', how='left')
+
+        # add layer number to the tuple of child cellid from parent cellids
+        for i, _ in df_reach_data_c.iterrows():
+            df_reach_data_c.loc[i, 'cellids'] = (df_reach_data_c.loc[i, 'cellid'][0],  # layer from parent cellid
+                                                 df_reach_data_c.loc[i, 'cellids'][0],
+                                                 df_reach_data_c.loc[i, 'cellids'][1])
+
+        df_reach_data_c
 
 
 
-
-
-
-        # intersect multilinestring with child grid to obtain r,c of child grid and reach lengths
-        linestring_reaches = ix.intersect(MultiLineString(lst_recs))
-        df_reach_data_c = pd.DataFrame.from_records(linestring_reaches)
+        #     df_conns = df_reach_data_c.filter(like='ic_').map(
+        #         self._map_connections_with_parent_segments, df=df_reach_data_c, na_action='ignore'
+        #     )
+        #     # df_conns = df_conns.join(df_reach_data_c['ifnop'], on='ifno')
+        #     # df_conns.groupby('ifnop').apply(
+        #     #     lambda x:
+        #     # )
+        #
+        # # intersect multilinestring with child grid to obtain r,c of child grid and reach lengths
+        # linestring_reaches = ix.intersect(MultiLineString(lst_recs))
+        # df_reach_data_c = pd.DataFrame.from_records(linestring_reaches)
 
         # populate dataframe with information required by SFR package
         # get_parent_indices does not allow vectorization, hence the for loop
         # TODO: column names of properties
         lst_rows_p = []
-        new_cols = {'rwid': np.nan,
-                'rgrd': np.nan,
-                'rtp': np.nan,
-                'rbth': np.nan,
-                'rhk': np.nan,
-                'man': np.nan,
-                'ncon': np.nan,
-                'ustrf': np.nan,
-                'ndv': np.nan,
-                'row_p': np.nan,
-                'col_p': np.nan,
-                'ifnop': np.nan}
+        # new_cols = {'rwid': np.nan,
+        #             'rgrd': np.nan,
+        #             'rtp': np.nan,
+        #             'rbth': np.nan,
+        #             'rhk': np.nan,
+        #             'man': np.nan,
+        #             'ncon': np.nan,
+        #             'ustrf': np.nan,
+        #             'ndv': np.nan,
+        #             'row_p': np.nan,
+        #             'col_p': np.nan,
+        #             'ifnop': np.nan}
+        #
+        # df_reach_data_c = df_reach_data_c.assign(**new_cols)
 
-        df_reach_data_c = df_reach_data_c.assign(**new_cols)
-        for idx, cellidc in enumerate(df_reach_data_c['cellids']):
-            _, ip, jp = lgr.get_parent_indices(0, *cellidc)
-            if isinstance(df_reach_data_c.iloc[idx]['ixshapes'], MultiLineString):
-                continue
-
-            df_conn['ifno']
-            df_tmp_row = df_reach_data_p[df_reach_data_p['cellid'] == (0, ip, jp)]
-            df_reach_data_c.loc[idx, 'ifnop'] = df_tmp_row['ifno'].item()
-            df_reach_data_c.loc[idx, 'rwid'] = df_tmp_row['rwid'].item()
-            df_reach_data_c.loc[idx, 'rgrd'] = df_tmp_row['rgrd'].item()
-            df_reach_data_c.loc[idx, 'rtp'] = df_tmp_row['rtp'].item()
-            df_reach_data_c.loc[idx, 'rbth'] = df_tmp_row['rbth'].item()
-            df_reach_data_c.loc[idx, 'rhk'] = df_tmp_row['rhk'].item()
-            df_reach_data_c.loc[idx, 'man'] = df_tmp_row['man'].item()
-            df_reach_data_c.loc[idx, 'ustrf'] = df_tmp_row['ustrf'].item()
-            df_reach_data_c.loc[idx, 'ndv'] = df_tmp_row['ndv'].item()
-
-            # df_reach_data_p[(df_reach_data_p['row'] - 1 == ip) & (
-            #             df_reach_data_p['column_'] - 1 == jp)]
-            # lst_rows_p.append(
-            #     df_reach_data_p[(df_reach_data_p['row'] - 1 == ip) & (df_reach_data_p['column_'] - 1 == jp)]) # TODO: columns of properties
-            # )
-        df_reach_data_c = df_reach_data_c.join(df_conn.set_index('ifno'), how='left')
+        # for idx, cellidc in enumerate(df_reach_data_c['cellids']):
+        #     _, ip, jp = lgr.get_parent_indices(0, *cellidc)
+        #     # if isinstance(df_reach_data_c.iloc[idx]['ixshapes'], MultiLineString):
+        #     #     continue
+        #
+        #     df_conn['ifno']
+        #     df_tmp_row = df_reach_data_p[df_reach_data_p['cellid'] == (0, ip, jp)]
+        #     df_reach_data_c.loc[idx, 'ifnop'] = df_tmp_row['ifno'].item()
+        #     df_reach_data_c.loc[idx, 'rwid'] = df_tmp_row['rwid'].item()
+        #     df_reach_data_c.loc[idx, 'rgrd'] = df_tmp_row['rgrd'].item()
+        #     df_reach_data_c.loc[idx, 'rtp'] = df_tmp_row['rtp'].item()
+        #     df_reach_data_c.loc[idx, 'rbth'] = df_tmp_row['rbth'].item()
+        #     df_reach_data_c.loc[idx, 'rhk'] = df_tmp_row['rhk'].item()
+        #     df_reach_data_c.loc[idx, 'man'] = df_tmp_row['man'].item()
+        #     df_reach_data_c.loc[idx, 'ustrf'] = df_tmp_row['ustrf'].item()
+        #     df_reach_data_c.loc[idx, 'ndv'] = df_tmp_row['ndv'].item()
+        #
+        #     # df_reach_data_p[(df_reach_data_p['row'] - 1 == ip) & (
+        #     #             df_reach_data_p['column_'] - 1 == jp)]
+        #     # lst_rows_p.append(
+        #     #     df_reach_data_p[(df_reach_data_p['row'] - 1 == ip) & (df_reach_data_p['column_'] - 1 == jp)]) # TODO: columns of properties
+        #     # )
+        # df_reach_data_c = df_reach_data_c.join(df_conn.set_index('ifno'), how='left')
         return df_reach_data_c
 
-
-
-
-
+    @staticmethod
+    def _map_connections_with_parent_segments(x, df):
+        df_subset = df[df['ifnop'] == abs(x)]
+        if np.isnan(x) or df_subset.size == 0:
+            return x
+        if x < 0:
+            return math.copysign(df_subset.index.min(), x)
+        else:
+            return math.copysign(df_subset.index.max(), x)
 
     @staticmethod
     def get_child_ij_indices(ip, jp, lgr):
@@ -590,7 +611,7 @@ class NestedDomainSimulation:
     @staticmethod
     def get_child_layer_connections(icounter, kp, lgr):
         n_sublayers = lgr.ncppl[kp]
-        iconns = np.arange(icounter, icounter+n_sublayers)
+        iconns = np.arange(icounter, icounter + n_sublayers)
         icounter += n_sublayers
         lstart = lgr.ncppl.cumsum()[kp] - n_sublayers
         kcs = np.arange(lstart, lgr.ncppl.cumsum()[kp])
@@ -619,10 +640,3 @@ class NestedDomainSimulation:
             self.sim.set_sim_path(sim_ws)
 
         self.sim.write_simulation()
-
-
-
-
-
-
-
