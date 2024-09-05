@@ -116,22 +116,6 @@ class TestNestedDomainSimulation(unittest.TestCase):
         with open('data/gwf/nd_simul_irregu_domain_sfr.pckl', 'rb') as f:
             nd_sim = pickle.load(f)
 
-        # # load the sfr package into the unpickled model
-        # nested_domain = NestedDomain.from_parent_model(sim_ws="./data/gwf")
-        # # self.nd_sim.sim.get_model().load_package(ftype='sfr', fname='Zone7_gwm_2024.sfr', pname='sfr',
-        # #                                         strict=True, ref_path='.')
-        # # self.nd_sim.streams_shp = './data/gwf/SFR_reaches_final_v2.shp'
-        #
-        #
-        # shp = 'data/gwf/subdomain.shp'
-        # nested_domain.define_subdomain(name="subdomain",
-        #                                nested_domain_shp=shp,
-        #                                xoff=6135367,
-        #                                yoff=2047406,
-        #                                num_cells_per_parent_cell=2,
-        #                                num_layers_per_parent_layer=[2, 2, 2] + [1] * 7)
-        # nd_sim = nested_domain.get_flow_simulation()
-
         nd_sim.refine_grid_data(streams_shp='./data/gwf/SFR_reaches_final_v2.shp')
 
     def test_write_simulation(self):

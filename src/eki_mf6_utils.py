@@ -128,7 +128,8 @@ class NestedDomain:
                                       exgmnamea=self.gwf.name,
                                       exgmnameb=subdomain_name,
                                       nexg=len(exchangedata),
-                                      exchangedata=exchangedata
+                                      exchangedata=exchangedata,
+                                      pname=f"{subdomain_name}.exg",
                                       )
         return exg
 
@@ -447,150 +448,336 @@ class NestedDomainSimulation:
         if pkg.budget_filerecord.array is not None:
             fn_budget_records = "cname_" + pkg.budget_filerecord.array[0][0]
 
-        reach_data = self.sfr_reach_data(pkg, lgr)
+        #reach_data = self.sfr_reach_data(pkg, lgr)
+
+        df_conns = self._srf_develop_child_connections(pkg, lgr)
+
+        pmodel_name = self.parent_model_name
+        cmodel_name = cname,
+        ppkg_name = pmodel.sfr.name
+        cpkg_name = pkg.name
+
+        # Retrieve mover package information before removing references to outside reaches and producing connection data
+        mvr_period_data = self._get_mover_period_data(pmodel_name, cmodel_name, ppkg_name, cpkg_name, df_conns)
+        conn_data, ncons, ndvis = self._produce_package_connection_data(df_conns)
+
+        package_data = self._produce_package_data(pkg, df_conns, ncons, ndvis)
+
+        print("Instantiating new mover package to connect parent-child stream network")
+        mvr_packages = [[pmodel_name, ppkg_name[0]], [cmodel_name[0], cpkg_name[0]]]
+        mvr = self.new_mover_package(self.sim.gwfgwf,
+                               maxmvr=max([len(per) for per in mvr_period_data.values()]),
+                               packages=mvr_packages,
+                               period_data=mvr_period_data,
+                               name=f"{cname}_mvr.mvr"
+                               )
+        self.sim.gwfgwf.mvr_filerecord = f"{cname}_mvr.mvr"
+
+        if not pmodel.sfr.mover:
+            print(f"Updating parent model package {pmodel.sfr.name} with mover")
+            pmodel.sfr.mover = True
+            pmodel.sfr.write()
 
         cpkg = pkg.__class__(cmodel,
                              save_flows=pkg.save_flows,
                              stage_filerecord=fn_stage_records,
                              budget_filerecord=fn_budget_records,
                              mover=True,
-                             maximum_picard_iterations=pkg.maximum_picard_iterations,
-                             maximum_iterations=pkg.maximum_iterations,
-                             maximum_depth_change=pkg.maximum_depth_change,
-                             unit_conversion=pkg.unit_conversion,
-                             length_conversion=pkg.length_conversion,
-                             time_conversion=pkg.time_conversion, )
+                             maximum_picard_iterations=pkg.maximum_picard_iterations.data,
+                             maximum_iterations=pkg.maximum_iterations.data,
+                             maximum_depth_change=pkg.maximum_depth_change.data,
+                             unit_conversion=pkg.unit_conversion.data,
+                             length_conversion=pkg.length_conversion.data,
+                             time_conversion=pkg.time_conversion.data,
+                             connectiondata=conn_data,
+                             packagedata=package_data,
+                             perioddata={0: [[0, "INFLOW", 0.0]]}
+                             )
 
         return cpkg
 
-    def sfr_reach_data(self, pkg, lgr):
+    @staticmethod
+    def new_mover_package(model: flopy.mf6,
+                          maxmvr: int,
+                          packages: list,
+                          period_data: list,
+                          name: str) -> flopy.mf6.modflow.mfgwfmvr.ModflowGwfmvr:
 
-        df_conn = pd.DataFrame(pkg.connectiondata.array)
+        modelnames=False
+        if isinstance(model, flopy.mf6.ModflowGwfgwf):
+            modelnames = True
+
+        cpkg = flopy.mf6.ModflowMvr(model,
+                                    modelnames=modelnames,
+                                    maxmvr=maxmvr,
+                                    maxpackages=len(packages),
+                                    packages=packages,
+                                    perioddata=period_data,
+                                    filename=f"{name}.mvr"
+                                    )
+
+        return cpkg
+
+    @staticmethod
+    def _produce_package_data(pkg, df_conns, ncons, ndivs):
+        # Open SFR reach properties from parent model
+        df_reach_data_p = pd.DataFrame.from_records(pkg.packagedata.array)
+
+        # Merge with parent
+        df_reach_data_c = df_conns.merge(df_reach_data_p, left_on='ifnop', right_on='ifno', how='left')
+
+        # add layer number to the tuple of child cellid from parent cellids
+        df_reach_data_c['cellids'] = [(df_reach_data_c.loc[i, 'cellid'][0],  # layer from parent cellid
+                                       *df_reach_data_c.loc[i, 'cellids']) for i, _ in df_reach_data_c.iterrows()]
+
+        # update number of connections, diversions, and fraction of incoming upstream flow
+        df_reach_data_c['ncons'] = ncons
+        df_reach_data_c['ndivs'] = ndivs
+
+        rec_reach_data = df_reach_data_c[['cellids',
+                         'lengths',
+                         'rwid',
+                         'rgrd',
+                         'rtp',
+                         'rbth',
+                         'rhk',
+                         'man',
+                         'ncon',
+                         'ustrf',
+                         'ndv']].to_records(index=True)
+
+        return rec_reach_data
+
+    @staticmethod
+    def _get_mover_period_data(pmodel_name, cmodel_name, ppkg_name, cpkg_name, df_conns):
+
+        absint = lambda x: int(np.abs(x))
+
+        df_mover_conns = df_conns.filter(like='ic_').map(
+            lambda x: x if abs(x) not in df_conns.index else np.nan
+        ).dropna(
+            axis=0,
+            how='all'
+        )
+
+        parent_model_name = pmodel_name
+        package_namep = ppkg_name[0]
+
+        child_model_name = cmodel_name[0]
+        package_namec = cpkg_name[0]
+
+        mv_period_data = []
+        for ifnoc, row in df_mover_conns.iterrows():
+            for ifno in row:
+                if math.isnan(ifno):
+                    continue
+                # Positive ifno indicates incoming water from parent
+                if ifno >= 0:
+                    mv_period_data.append(
+                        [parent_model_name, package_namep, absint(ifno),
+                         child_model_name, package_namec, absint(ifnoc),
+                         "FACTOR", 1]
+                    )
+                else:
+                    mv_period_data.append(
+                        [child_model_name, package_namec, absint(ifnoc),
+                         parent_model_name, package_namep, absint(ifno),
+                         "FACTOR", 1]
+                    )
+        return {0: mv_period_data}
+
+    @staticmethod
+    def _produce_package_connection_data(df_conns):
+        """
+        Parses the connections dataframe, removes connections to reaches outside the child domain,
+         removes NaNs and returns a list of tuples
+        """
+        # Apply to columns, drop NaNs from Series, and creates a list of tuples with network connections
+        ls_conn_data = df_conns.filter(like='ic_').map(
+            lambda x: x if abs(x) in df_conns.index else np.nan
+        ).reset_index().T.apply(lambda x: tuple(x.dropna().astype(int))).to_list()
+
+        nconns = [len(x)-1 for x in ls_conn_data]
+        ndivs = [len(list(filter(lambda i: i<0, x)))-1 for x in ls_conn_data]
+
+        return ls_conn_data, nconns, ndivs
+
+    def _srf_develop_child_connections(self, pkg, lgr):
+
+        # Open SFR connections from parent model
+        df_conn = pd.DataFrame(pkg.connectiondata.array).set_index('ifno')
+
+        # Open SFR reach properties from parent model
+        df_reach_data_p = pd.DataFrame.from_records(pkg.packagedata.array)
+
+        # get parent idomain
+        idomainp = lgr.parent.idomain
+
         # retrieve child modelgrid and initialize a GridIntersect object
         mgrid = lgr.child.modelgrid
         ix = GridIntersect(mgrid, method='structured')
 
-        df_reach_data_p = pd.DataFrame.from_records(pkg.packagedata.array)
+        df_shp_properties, ls_geoms = self._parse_shp_geom(self.streams_shp)
 
-        # load stream network using fiona, parse geometries as Multiline shapely
-        with fiona.open(self.streams_shp) as shp_features:
-           # lst_recs = [feat.geometry['coordinates'] for feat in shp_features]
+        # STAGE 1: develop connections between end child reaches that correspond to ends of parent reaches
+        df_reach_conns = self._develop_segment_connections(df_shp_properties,
+                                                           ls_geoms,
+                                                           ix,
+                                                           df_conn,
+                                                           df_reach_data_p,
+                                                           idomainp)
 
+        # STAGE 2: Update reach ids and develop internal connections between segments of child reaches
+        df_reach_conns = self._develop_internal_segment_connections(df_reach_conns)
+
+        return df_reach_conns
+
+    def _parse_shp_geom(self, fn_shp):
+        """
+        Open a vector dataset with the model river network
+        Returns a dataframe with segment properties and a list of shapely geometries
+
+        :param fn_shp: filename of vector dataset with river network
+        :return: dataframe with reach properties, list of geometries (tuple)
+        """
+
+        with fiona.open(fn_shp) as shp_features:
             # Parse stream network properties as dataframe
             df_reach_data_shape_p = pd.DataFrame.from_records([feat.properties for feat in shp_features])
+            ls_cgeom = [feat.geometry for feat in shp_features]
 
-            conns = df_conn.set_index('ifno')
-            lst_cgeom = []
-            for i, reachp in df_reach_data_p.iterrows():
-                ifno = reachp['ifno']
-                idx = df_reach_data_shape_p[df_reach_data_shape_p['ReachID'] == ifno + 1].index.item()
-                cgeom = ix.intersect(shape(shp_features[idx].geometry))
-                cellidp = reachp['cellid']
+            return df_reach_data_shape_p, ls_cgeom
 
-                if (cgeom.size == 0) or (lgr.parent.idomain[cellidp] == 1):
-                    continue
+    @staticmethod
+    def _develop_segment_connections(df_shp_properties, ls_geoms, ix, df_p_conn, df_p_props, idomainp):
+        """
+        Connects the end of child segments that correspond to the parent reaches and
+        flags reach connections of high resolution reaches as NaNs
 
-                tmp_df = pd.DataFrame.from_records(cgeom)
-                tmp_df['ifnop'] = ifno
+        :return: dataframe with child network connections based on parent connections
+        """
 
-                tmp_df = tmp_df.join(conns, on='ifnop')
-                if tmp_df.shape[0] > 1:
-                    ls_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
-                    tmp_df.iloc[0, ls_idx] = tmp_df.iloc[0, ls_idx].map(lambda x: -REACH_FLAG if x < 0 else x)
-                    tmp_df.iloc[1:-1, ls_idx] = tmp_df.iloc[1:-1, ls_idx].map(lambda x: np.nan)
-                    tmp_df.iloc[-1, ls_idx] = tmp_df.iloc[-1, ls_idx].map(lambda x: REACH_FLAG if x > 0 else x)
+        lst_cgeom = []
+        for i, reachp in df_p_props.iterrows():
+            ifno = reachp['ifno']
+            idx = df_shp_properties[
+                df_shp_properties['ReachID'] == ifno + 1].index.item()  # TODO: column names of properties
+            cgeom = ix.intersect(shape(ls_geoms[idx]))
+            cellidp = reachp['cellid']
 
-                lst_cgeom.append(tmp_df)
+            if (cgeom.size == 0) or (idomainp[cellidp] == 1):
+                continue
+
+            tmp_df = pd.DataFrame.from_records(cgeom)
+            tmp_df['ifnop'] = ifno
+
+            tmp_df = tmp_df.join(df_p_conn, on='ifnop')
+            if tmp_df.shape[0] > 1:
+                ls_col_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
+                tmp_df.iloc[0, ls_col_idx] = tmp_df.iloc[0, ls_col_idx].map(lambda x: -REACH_FLAG if x < 0 else x)
+                tmp_df.iloc[1:-1, ls_col_idx] = tmp_df.iloc[1:-1, ls_col_idx].map(lambda x: np.nan)
+                tmp_df.iloc[-1, ls_col_idx] = tmp_df.iloc[-1, ls_col_idx].map(lambda x: REACH_FLAG if x > 0 else x)
+
+            lst_cgeom.append(tmp_df)
 
         df_reach_data_c = pd.concat(lst_cgeom)
         df_reach_data_c = df_reach_data_c.reset_index(drop=True)
         df_reach_data_c.index.name = 'ifno'
 
+        return df_reach_data_c
 
+    def _develop_internal_segment_connections(self, df_reach_data_c):
         lst_cgeom = []
         for ifnop, tmp_df in df_reach_data_c.groupby('ifnop'):
-            ls_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
-            tmp_df.iloc[:, ls_idx] = tmp_df.iloc[:, ls_idx].map(self._map_connections_with_parent_segments,
-                                                                df=df_reach_data_c, na_action='ignore')
+            ls_col_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
+            tmp_df.iloc[:, ls_col_idx] = tmp_df.iloc[:, ls_col_idx].map(self._map_connections_with_parent_segments,
+                                                                        df=df_reach_data_c, na_action='ignore')
             if tmp_df.shape[0] > 1:
-                tmp_df.iloc[0, ls_idx] = tmp_df.iloc[:1, ls_idx].map(
+                tmp_df.iloc[0, ls_col_idx] = tmp_df.iloc[:1, ls_col_idx].map(
                     lambda x: -(tmp_df.index[0] + 1) if abs(x) == REACH_FLAG else x)
-                tmp_df.iloc[1:-1, ls_idx[0]] = -(tmp_df.iloc[1:-1, ls_idx[0]].index + 1)
-                tmp_df.iloc[1:-1, ls_idx[1]] = tmp_df.iloc[1:-1, ls_idx[1]].index - 1
-                tmp_df.iloc[-1, ls_idx] = tmp_df.iloc[-1:, ls_idx].map(
+                tmp_df.iloc[1:-1, ls_col_idx[0]] = -(tmp_df.iloc[1:-1, ls_col_idx[0]].index + 1)
+                tmp_df.iloc[1:-1, ls_col_idx[1]] = tmp_df.iloc[1:-1, ls_col_idx[1]].index - 1
+                tmp_df.iloc[-1, ls_col_idx] = tmp_df.iloc[-1:, ls_col_idx].map(
                     lambda x: tmp_df.index[-1] - 1 if abs(x) == REACH_FLAG else x)
 
             lst_cgeom.append(tmp_df)
 
-        df_reach_data_c = pd.concat(lst_cgeom)
+        return pd.concat(lst_cgeom)
 
-        df_reach_data_c = df_reach_data_c.merge(df_reach_data_p, left_on='ifnop', right_on='ifno', how='left')
-
-        # add layer number to the tuple of child cellid from parent cellids
-        for i, _ in df_reach_data_c.iterrows():
-            df_reach_data_c.loc[i, 'cellids'] = (df_reach_data_c.loc[i, 'cellid'][0],  # layer from parent cellid
-                                                 df_reach_data_c.loc[i, 'cellids'][0],
-                                                 df_reach_data_c.loc[i, 'cellids'][1])
-
-        df_reach_data_c
-
-
-
-        #     df_conns = df_reach_data_c.filter(like='ic_').map(
-        #         self._map_connections_with_parent_segments, df=df_reach_data_c, na_action='ignore'
-        #     )
-        #     # df_conns = df_conns.join(df_reach_data_c['ifnop'], on='ifno')
-        #     # df_conns.groupby('ifnop').apply(
-        #     #     lambda x:
-        #     # )
-        #
-        # # intersect multilinestring with child grid to obtain r,c of child grid and reach lengths
-        # linestring_reaches = ix.intersect(MultiLineString(lst_recs))
-        # df_reach_data_c = pd.DataFrame.from_records(linestring_reaches)
-
-        # populate dataframe with information required by SFR package
-        # get_parent_indices does not allow vectorization, hence the for loop
-        # TODO: column names of properties
-        lst_rows_p = []
-        # new_cols = {'rwid': np.nan,
-        #             'rgrd': np.nan,
-        #             'rtp': np.nan,
-        #             'rbth': np.nan,
-        #             'rhk': np.nan,
-        #             'man': np.nan,
-        #             'ncon': np.nan,
-        #             'ustrf': np.nan,
-        #             'ndv': np.nan,
-        #             'row_p': np.nan,
-        #             'col_p': np.nan,
-        #             'ifnop': np.nan}
-        #
-        # df_reach_data_c = df_reach_data_c.assign(**new_cols)
-
-        # for idx, cellidc in enumerate(df_reach_data_c['cellids']):
-        #     _, ip, jp = lgr.get_parent_indices(0, *cellidc)
-        #     # if isinstance(df_reach_data_c.iloc[idx]['ixshapes'], MultiLineString):
-        #     #     continue
-        #
-        #     df_conn['ifno']
-        #     df_tmp_row = df_reach_data_p[df_reach_data_p['cellid'] == (0, ip, jp)]
-        #     df_reach_data_c.loc[idx, 'ifnop'] = df_tmp_row['ifno'].item()
-        #     df_reach_data_c.loc[idx, 'rwid'] = df_tmp_row['rwid'].item()
-        #     df_reach_data_c.loc[idx, 'rgrd'] = df_tmp_row['rgrd'].item()
-        #     df_reach_data_c.loc[idx, 'rtp'] = df_tmp_row['rtp'].item()
-        #     df_reach_data_c.loc[idx, 'rbth'] = df_tmp_row['rbth'].item()
-        #     df_reach_data_c.loc[idx, 'rhk'] = df_tmp_row['rhk'].item()
-        #     df_reach_data_c.loc[idx, 'man'] = df_tmp_row['man'].item()
-        #     df_reach_data_c.loc[idx, 'ustrf'] = df_tmp_row['ustrf'].item()
-        #     df_reach_data_c.loc[idx, 'ndv'] = df_tmp_row['ndv'].item()
-        #
-        #     # df_reach_data_p[(df_reach_data_p['row'] - 1 == ip) & (
-        #     #             df_reach_data_p['column_'] - 1 == jp)]
-        #     # lst_rows_p.append(
-        #     #     df_reach_data_p[(df_reach_data_p['row'] - 1 == ip) & (df_reach_data_p['column_'] - 1 == jp)]) # TODO: columns of properties
-        #     # )
-        # df_reach_data_c = df_reach_data_c.join(df_conn.set_index('ifno'), how='left')
-        return df_reach_data_c
+    # def sfr_reach_data(self, pkg, lgr):
+    #
+    #     # Open SFR connections from parent model
+    #     df_conn = pd.DataFrame(pkg.connectiondata.array).set_index('ifno')
+    #
+    #     # Open SFR reach properties from parent model
+    #     df_reach_data_p = pd.DataFrame.from_records(pkg.packagedata.array)
+    #
+    #     # get idomain from parent model
+    #
+    #     # retrieve child modelgrid and initialize a GridIntersect object
+    #     mgrid = lgr.child.modelgrid
+    #     ix = GridIntersect(mgrid, method='structured')
+    #
+    #     # load stream network using fiona, parse geometries as Multiline shapely
+    #     with fiona.open(self.streams_shp) as shp_features:
+    #
+    #         # Parse stream network properties as dataframe
+    #         df_reach_data_shape_p = pd.DataFrame.from_records([feat.properties for feat in shp_features])
+    #
+    #         lst_cgeom = []
+    #         for i, reachp in df_reach_data_p.iterrows():
+    #             ifno = reachp['ifno']
+    #             idx = df_reach_data_shape_p[
+    #                 df_reach_data_shape_p['ReachID'] == ifno + 1].index.item()  # TODO: column names of properties
+    #             cgeom = ix.intersect(shape(shp_features[idx].geometry))
+    #             cellidp = reachp['cellid']
+    #
+    #             if (cgeom.size == 0) or (lgr.parent.idomain[cellidp] == 1):
+    #                 continue
+    #
+    #             tmp_df = pd.DataFrame.from_records(cgeom)
+    #             tmp_df['ifnop'] = ifno
+    #
+    #             tmp_df = tmp_df.join(df_conn, on='ifnop')
+    #             if tmp_df.shape[0] > 1:
+    #                 ls_col_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
+    #                 tmp_df.iloc[0, ls_col_idx] = tmp_df.iloc[0, ls_col_idx].map(lambda x: -REACH_FLAG if x < 0 else x)
+    #                 tmp_df.iloc[1:-1, ls_col_idx] = tmp_df.iloc[1:-1, ls_col_idx].map(lambda x: np.nan)
+    #                 tmp_df.iloc[-1, ls_col_idx] = tmp_df.iloc[-1, ls_col_idx].map(lambda x: REACH_FLAG if x > 0 else x)
+    #
+    #             lst_cgeom.append(tmp_df)
+    #
+    #     df_reach_data_c = pd.concat(lst_cgeom)
+    #     df_reach_data_c = df_reach_data_c.reset_index(drop=True)
+    #     df_reach_data_c.index.name = 'ifno'
+    #
+    #     lst_cgeom = []
+    #     for ifnop, tmp_df in df_reach_data_c.groupby('ifnop'):
+    #         ls_col_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
+    #         tmp_df.iloc[:, ls_col_idx] = tmp_df.iloc[:, ls_col_idx].map(self._map_connections_with_parent_segments,
+    #                                                                     df=df_reach_data_c, na_action='ignore')
+    #         if tmp_df.shape[0] > 1:
+    #             tmp_df.iloc[0, ls_col_idx] = tmp_df.iloc[:1, ls_col_idx].map(
+    #                 lambda x: -(tmp_df.index[0] + 1) if abs(x) == REACH_FLAG else x)
+    #             tmp_df.iloc[1:-1, ls_col_idx[0]] = -(tmp_df.iloc[1:-1, ls_col_idx[0]].index + 1)
+    #             tmp_df.iloc[1:-1, ls_col_idx[1]] = tmp_df.iloc[1:-1, ls_col_idx[1]].index - 1
+    #             tmp_df.iloc[-1, ls_col_idx] = tmp_df.iloc[-1:, ls_col_idx].map(
+    #                 lambda x: tmp_df.index[-1] - 1 if abs(x) == REACH_FLAG else x)
+    #
+    #         lst_cgeom.append(tmp_df)
+    #
+    #     df_reach_data_c = pd.concat(lst_cgeom)
+    #
+    #     df_reach_data_c = df_reach_data_c.merge(df_reach_data_p, left_on='ifnop', right_on='ifno', how='left')
+    #
+    #     # add layer number to the tuple of child cellid from parent cellids
+    #     df_reach_data_c['cellids'] = [(df_reach_data_c.loc[i, 'cellid'][0],  # layer from parent cellid
+    #                                    *df_reach_data_c.loc[i, 'cellids']) for i, _ in df_reach_data_c.iterrows()]
+    #
+    #     # update number of connections, diversions, and fraction of incoming upstream flow
+    #     df_reach_data_c
+    #
+    #     return df_reach_data_c
 
     @staticmethod
     def _map_connections_with_parent_segments(x, df):
