@@ -111,6 +111,19 @@ class TestNestedDomainSimulation(unittest.TestCase):
     def test_refine_grid_data(self):
         self.nd_sim.refine_grid_data()
 
+    def test_refine_grid_data_with_rcha_list(self):
+
+        self.nd_sim.sim.get_model().remove_package('rcha-1')
+        self.nd_sim.sim.get_model().load_package(ftype='rch',
+                                                 fname='zone7_gwm_2024.list.rch',
+                                                 pname='rch-1',
+                                                 strict=True,
+                                                 ref_path='.')
+
+        self.nd_sim.refine_grid_data(streams_shp='./data/gwf/SFR_reaches_final_v2.shp')
+        self.nd_sim.sim.get_model().rch.plot()
+        plt.show()
+
     def test_refine_grid_data_with_sfr(self):
 
         with open('data/gwf/nd_simul_irregu_domain_sfr.pckl', 'rb') as f:

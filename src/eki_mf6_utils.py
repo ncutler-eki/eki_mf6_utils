@@ -228,8 +228,12 @@ class NestedDomainSimulation:
         for name, lgr in zip(self.lst_subdomain_names, self.lst_subdomain_lgr):
             for pck_name in parent_model.package_names:
                 pck = parent_model.get_package(pck_name)
-                if pck.package_type in ['ic', 'sto', 'npf', 'rcha', 'maw', 'sfr']:
-                    logger.info(f"Package {pck_name} with {pck.package_type} found and will be regridded")
+                if pck.package_type in ['ic', 'sto', 'npf', 'rcha', 'rch', 'maw', 'sfr']:
+                    print(f"Package {pck_name} with {pck.package_type} found and will be regridded")
+                    if pck.package_type == 'sfr' and streams_shp is None:
+                        print("The parent model contains an SFR package but 'stream_shp' was not provided")
+                        print("Skipping SFR regridding...")
+                        continue
                     self.regrid_package(pck, parent_model, self.sim.get_model(name), lgr, name)
 
     @staticmethod
@@ -370,6 +374,28 @@ class NestedDomainSimulation:
         return cpkg
 
     @regrid_package.register
+    def _(self,
+          pkg: flopy.mf6.modflow.mfgwfrch.ModflowGwfrch,
+          pmodel: flopy.mf6.ModflowGwf,
+          cmodel: flopy.mf6.ModflowGwf,
+          lgr: flopy.utils.lgrutil.Lgr,
+          cname: str) -> flopy.mf6.modflow.mfgwfrch.ModflowGwfrch:
+
+        print("About to process recharge transient data...")
+        rch_rec = pkg.stress_period_data
+        lst_rch_rec = self._remap_stress_periods(rch_rec, lgr)
+
+        cpkg = pkg.__class__(cmodel,
+                             fixed_cell=pkg.fixed_cell,
+                             auxiliary=pkg.auxiliary.array,
+                             auxmultname=pkg.auxmultname.data,
+                             stress_period_data=lst_rch_rec,
+                             save_flows=True,
+                             )
+        print(cpkg.check())
+        return cpkg
+
+    @regrid_package.register
     def _regrid_package(self,
                         pkg: flopy.mf6.modflow.mfgwfmaw.ModflowGwfmaw,
                         pmodel: flopy.mf6.ModflowGwf,
@@ -380,9 +406,9 @@ class NestedDomainSimulation:
         fn_head_records = None
         fn_budget_records = None
         if pkg.head_filerecord.array is not None:
-            fn_head_records = "cname_" + pkg.head_filerecord[0][0]
+            fn_head_records = "cname_" + pkg.head_filerecord.array[0][0]
         if pkg.budget_filerecord.array is not None:
-            fn_budget_records = "cname_" + pkg.budget_filerecord[0][0]
+            fn_budget_records = "cname_" + pkg.budget_filerecord.array[0][0]
 
         print(f"Updating well connections in maw package {pkg.name}")
         # find subset of wells within the child grid
@@ -399,7 +425,7 @@ class NestedDomainSimulation:
 
         df_cconns = pd.DataFrame.from_records(lst_c_connections,
                                               columns=lst_c_connections[0].dtype.names)
-        df_lst_rec = df_cconns.groupby(df_cconns['ifno']).apply(self._update_connection_records, lgr=lgr)
+        df_lst_rec = df_cconns.groupby(df_cconns['ifno']).apply(self._update_connection_records, lgr=lgr, include_groups=False)
         c_conns = df_lst_rec.to_records(index=False)
 
         # update ngwfnodes
@@ -458,7 +484,7 @@ class NestedDomainSimulation:
         cpkg_name = pkg.name
 
         # Retrieve mover package information before removing references to outside reaches and producing connection data
-        mvr_period_data = self._get_mover_period_data(pmodel_name, cmodel_name, ppkg_name, cpkg_name, df_conns)
+        mvr_period_data = self._generate_mover_period_data(pmodel_name, cmodel_name, ppkg_name, cpkg_name, df_conns)
         conn_data, ncons, ndvis = self._produce_package_connection_data(df_conns)
 
         package_data = self._produce_package_data(pkg, df_conns, ncons, ndvis)
@@ -518,6 +544,7 @@ class NestedDomainSimulation:
 
         return cpkg
 
+
     @staticmethod
     def _produce_package_data(pkg, df_conns, ncons, ndivs):
         # Open SFR reach properties from parent model
@@ -549,7 +576,7 @@ class NestedDomainSimulation:
         return rec_reach_data
 
     @staticmethod
-    def _get_mover_period_data(pmodel_name, cmodel_name, ppkg_name, cpkg_name, df_conns):
+    def _generate_mover_period_data(pmodel_name, cmodel_name, ppkg_name, cpkg_name, df_conns):
 
         absint = lambda x: int(np.abs(x))
 
@@ -704,81 +731,6 @@ class NestedDomainSimulation:
 
         return pd.concat(lst_cgeom)
 
-    # def sfr_reach_data(self, pkg, lgr):
-    #
-    #     # Open SFR connections from parent model
-    #     df_conn = pd.DataFrame(pkg.connectiondata.array).set_index('ifno')
-    #
-    #     # Open SFR reach properties from parent model
-    #     df_reach_data_p = pd.DataFrame.from_records(pkg.packagedata.array)
-    #
-    #     # get idomain from parent model
-    #
-    #     # retrieve child modelgrid and initialize a GridIntersect object
-    #     mgrid = lgr.child.modelgrid
-    #     ix = GridIntersect(mgrid, method='structured')
-    #
-    #     # load stream network using fiona, parse geometries as Multiline shapely
-    #     with fiona.open(self.streams_shp) as shp_features:
-    #
-    #         # Parse stream network properties as dataframe
-    #         df_reach_data_shape_p = pd.DataFrame.from_records([feat.properties for feat in shp_features])
-    #
-    #         lst_cgeom = []
-    #         for i, reachp in df_reach_data_p.iterrows():
-    #             ifno = reachp['ifno']
-    #             idx = df_reach_data_shape_p[
-    #                 df_reach_data_shape_p['ReachID'] == ifno + 1].index.item()  # TODO: column names of properties
-    #             cgeom = ix.intersect(shape(shp_features[idx].geometry))
-    #             cellidp = reachp['cellid']
-    #
-    #             if (cgeom.size == 0) or (lgr.parent.idomain[cellidp] == 1):
-    #                 continue
-    #
-    #             tmp_df = pd.DataFrame.from_records(cgeom)
-    #             tmp_df['ifnop'] = ifno
-    #
-    #             tmp_df = tmp_df.join(df_conn, on='ifnop')
-    #             if tmp_df.shape[0] > 1:
-    #                 ls_col_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
-    #                 tmp_df.iloc[0, ls_col_idx] = tmp_df.iloc[0, ls_col_idx].map(lambda x: -REACH_FLAG if x < 0 else x)
-    #                 tmp_df.iloc[1:-1, ls_col_idx] = tmp_df.iloc[1:-1, ls_col_idx].map(lambda x: np.nan)
-    #                 tmp_df.iloc[-1, ls_col_idx] = tmp_df.iloc[-1, ls_col_idx].map(lambda x: REACH_FLAG if x > 0 else x)
-    #
-    #             lst_cgeom.append(tmp_df)
-    #
-    #     df_reach_data_c = pd.concat(lst_cgeom)
-    #     df_reach_data_c = df_reach_data_c.reset_index(drop=True)
-    #     df_reach_data_c.index.name = 'ifno'
-    #
-    #     lst_cgeom = []
-    #     for ifnop, tmp_df in df_reach_data_c.groupby('ifnop'):
-    #         ls_col_idx = [tmp_df.T.index.get_loc(name) for name in tmp_df.iloc[0].filter(like='ic_').index]
-    #         tmp_df.iloc[:, ls_col_idx] = tmp_df.iloc[:, ls_col_idx].map(self._map_connections_with_parent_segments,
-    #                                                                     df=df_reach_data_c, na_action='ignore')
-    #         if tmp_df.shape[0] > 1:
-    #             tmp_df.iloc[0, ls_col_idx] = tmp_df.iloc[:1, ls_col_idx].map(
-    #                 lambda x: -(tmp_df.index[0] + 1) if abs(x) == REACH_FLAG else x)
-    #             tmp_df.iloc[1:-1, ls_col_idx[0]] = -(tmp_df.iloc[1:-1, ls_col_idx[0]].index + 1)
-    #             tmp_df.iloc[1:-1, ls_col_idx[1]] = tmp_df.iloc[1:-1, ls_col_idx[1]].index - 1
-    #             tmp_df.iloc[-1, ls_col_idx] = tmp_df.iloc[-1:, ls_col_idx].map(
-    #                 lambda x: tmp_df.index[-1] - 1 if abs(x) == REACH_FLAG else x)
-    #
-    #         lst_cgeom.append(tmp_df)
-    #
-    #     df_reach_data_c = pd.concat(lst_cgeom)
-    #
-    #     df_reach_data_c = df_reach_data_c.merge(df_reach_data_p, left_on='ifnop', right_on='ifno', how='left')
-    #
-    #     # add layer number to the tuple of child cellid from parent cellids
-    #     df_reach_data_c['cellids'] = [(df_reach_data_c.loc[i, 'cellid'][0],  # layer from parent cellid
-    #                                    *df_reach_data_c.loc[i, 'cellids']) for i, _ in df_reach_data_c.iterrows()]
-    #
-    #     # update number of connections, diversions, and fraction of incoming upstream flow
-    #     df_reach_data_c
-    #
-    #     return df_reach_data_c
-
     @staticmethod
     def _map_connections_with_parent_segments(x, df):
         df_subset = df[df['ifnop'] == abs(x)]
@@ -789,11 +741,35 @@ class NestedDomainSimulation:
         else:
             return math.copysign(df_subset.index.max(), x)
 
+    def _remap_stress_periods(self, rch_rec, lgr):
+        dct_recs = {}
+        nlc, nrc, ncc = lgr.child.idomain.shape
+        for sp, sp_data in rch_rec.data.items():
+            lst_sp_rec = []
+            for rec in sp_data:
+                kp, ip, jp = rec[0]
+                kc, ics, jcs = self.get_child_kij_index_connections(kp, ip, jp, lgr)
+                for idx in range(len(ics)):
+                    if any([(i<0 or i>=nrc or i>=ncc) for i in (kc[0], ics[idx], jcs[idx])]) or (lgr.child.idomain[kc[0], ics[idx], jcs[idx]] == 0):
+                        continue
+                    lst_sp_rec.append(
+                        ((kc[0], ics[idx], jcs[idx]), *tuple(rec)[1:])
+                    )
+            dct_recs[sp] = lst_sp_rec
+        return dct_recs
+
     @staticmethod
     def get_child_ij_indices(ip, jp, lgr):
         ic = (ip - lgr.nprbeg) * lgr.ncpp
         jc = (jp - lgr.npcbeg) * lgr.ncpp
         return ic, jc
+
+    def get_child_kij_index_connections(self, kp, ip, jp, lgr):
+
+        _, _, kcs = self.get_child_layer_connections(0, kp, lgr)
+        ic = (ip - lgr.nprbeg) * lgr.ncpp
+        jc = (jp - lgr.npcbeg) * lgr.ncpp
+        return kcs, np.arange(ic, ic+lgr.ncpp), np.arange(jc, jc+lgr.ncpp)
 
     @staticmethod
     def get_child_layer_connections(icounter, kp, lgr):
