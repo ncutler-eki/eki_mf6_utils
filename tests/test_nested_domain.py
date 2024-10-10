@@ -5,6 +5,7 @@ import pickle
 import copy
 
 from flopy.mf6.modflow.mfgwfgwf import ModflowGwfgwf
+import flopy.mf6.modflow as mf_pckgs
 
 
 class TestNestedDomain(unittest.TestCase):
@@ -108,10 +109,26 @@ class TestNestedDomainSimulation(unittest.TestCase):
         with open("./data/gwf/ng_simul.pckl", "rb") as file:
             cls.nd_sim = pickle.load(file)
 
+        cls.nd_sim.sim.get_model().remove_package('chd-1')
+        cls.nd_sim.sim.get_model().remove_package('rcha-1')
+        cls.nd_sim.sim.get_model().remove_package('rch-1')
+
     def test_refine_grid_data(self):
         self.nd_sim.refine_grid_data()
 
-    def test_refine_grid_data_with_rcha_list(self):
+    def test_refine_grid_data_with_chd(self):
+
+        self.nd_sim.sim.get_model().remove_package('chd-1')
+        self.nd_sim.sim.get_model().load_package(ftype='chd',
+                                                 fname='zone7_gwm_2024.chd',
+                                                 pname='chd-1',
+                                                 strict=True,
+                                                 ref_path='.')
+
+        self.nd_sim.refine_grid_data(streams_shp='./data/gwf/SFR_reaches_final_v2.shp')
+        assert isinstance(self.nd_sim.sim.get_model().chd, mf_pckgs.mfgwfchd.ModflowGwfchd)
+
+    def test_refine_grid_data_with_rch_list(self):
 
         self.nd_sim.sim.get_model().remove_package('rcha-1')
         self.nd_sim.sim.get_model().load_package(ftype='rch',

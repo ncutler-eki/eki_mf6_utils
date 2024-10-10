@@ -228,7 +228,7 @@ class NestedDomainSimulation:
         for name, lgr in zip(self.lst_subdomain_names, self.lst_subdomain_lgr):
             for pck_name in parent_model.package_names:
                 pck = parent_model.get_package(pck_name)
-                if pck.package_type in ['ic', 'sto', 'npf', 'rcha', 'rch', 'maw', 'sfr']:
+                if pck.package_type in ['ic', 'sto', 'npf', 'rcha', 'rch', 'maw', 'sfr', 'chd']:
                     print(f"Package {pck_name} with {pck.package_type} found and will be regridded")
                     if pck.package_type == 'sfr' and streams_shp is None:
                         print("The parent model contains an SFR package but 'stream_shp' was not provided")
@@ -522,6 +522,30 @@ class NestedDomainSimulation:
 
         return cpkg
 
+    @regrid_package.register
+    def _(self,
+          pkg: flopy.mf6.modflow.mfgwfchd.ModflowGwfchd,
+          pmodel: flopy.mf6.ModflowGwf,
+          cmodel: flopy.mf6.ModflowGwf,
+          lgr: flopy.utils.lgrutil.Lgr,
+          cname: str) -> flopy.mf6.modflow.mfgwfchd.ModflowGwfchd:
+
+        print("About to process CHD transient data...")
+        chd_rec = pkg.stress_period_data
+        lst_chd_rec = self._remap_stress_periods(chd_rec, lgr, only_top_layer=False)
+
+        cpkg = pkg.__class__(cmodel,
+                             boundnames=pkg.boundnames,
+                             auxiliary=pkg.auxiliary.array,
+                             auxmultname=pkg.auxmultname.data,
+                             stress_period_data=lst_chd_rec,
+                             print_input=pkg.print_input,
+                             print_flows=pkg.print_flows,
+                             save_flows=True,
+                             )
+        print(cpkg.check())
+        return cpkg
+
     @staticmethod
     def new_mover_package(model: flopy.mf6,
                           maxmvr: int,
@@ -741,7 +765,7 @@ class NestedDomainSimulation:
         else:
             return math.copysign(df_subset.index.max(), x)
 
-    def _remap_stress_periods(self, rch_rec, lgr):
+    def _remap_stress_periods(self, rch_rec, lgr, only_top_layer=True):
         dct_recs = {}
         nlc, nrc, ncc = lgr.child.idomain.shape
         for sp, sp_data in rch_rec.data.items():
@@ -750,11 +774,13 @@ class NestedDomainSimulation:
                 kp, ip, jp = rec[0]
                 kc, ics, jcs = self.get_child_kij_index_connections(kp, ip, jp, lgr)
                 for idx in range(len(ics)):
-                    if any([(i<0 or i>=nrc or i>=ncc) for i in (kc[0], ics[idx], jcs[idx])]) or (lgr.child.idomain[kc[0], ics[idx], jcs[idx]] == 0):
-                        continue
-                    lst_sp_rec.append(
-                        ((kc[0], ics[idx], jcs[idx]), *tuple(rec)[1:])
-                    )
+                    n = 1 if only_top_layer else len(kc)
+                    for kidx in range(n):
+                        if any([(i<0 or i>=nrc or i>=ncc) for i in (kc[kidx], ics[idx], jcs[idx])]) or (lgr.child.idomain[kc[0], ics[idx], jcs[idx]] == 0):
+                            continue
+                        lst_sp_rec.append(
+                            ((kc[kidx], ics[idx], jcs[idx]), *tuple(rec)[1:])
+                        )
             dct_recs[sp] = lst_sp_rec
         return dct_recs
 
