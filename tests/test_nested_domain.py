@@ -104,48 +104,158 @@ class TestNestedDomain(unittest.TestCase):
 class TestNestedDomainSimulation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.nested_grid = NestedDomain.from_parent_model(sim_ws="./data/gwf", load_only=['ims'])
+        kstart = 0
+        kstop = 10
+        istart = 60
+        istop = 70
+        jstart = 50
+        jstop = 60
+        cls.nested_grid.define_subdomain(name="subdomain",
+                                          kstart=kstart,
+                                          kstop=kstop,
+                                          istart=istart,
+                                          istop=istop,
+                                          jstart=jstart,
+                                          jstop=jstop,
+                                          num_cells_per_parent_cell=2,
+                                          num_layers_per_parent_layer=[2, 2, 2] + [1] * 7)
+        cls.nd_sim = cls.nested_grid.get_flow_simulation()
 
-        with open("./data/gwf/ng_simul.pckl", "rb") as file:
-            cls.nd_sim = pickle.load(file)
-
-        cls.nd_sim.sim.get_model().remove_package('chd-1')
-        cls.nd_sim.sim.get_model().remove_package('rcha-1')
-        cls.nd_sim.sim.get_model().remove_package('rch-1')
+        # with open("./data/gwf/ng_simul.pckl", "rb") as file:
+        #     cls.nd_sim = pickle.load(file)
+        #
+        # cls.nd_sim.sim.get_model().remove_package('chd-1')
+        # cls.nd_sim.sim.get_model().remove_package('rcha-1')
+        # cls.nd_sim.sim.get_model().remove_package('rch-1')
 
     def test_refine_grid_data(self):
         self.nd_sim.refine_grid_data()
 
-    def test_refine_grid_data_with_chd(self):
+   # 'maw', 'sfr',
 
-        self.nd_sim.sim.get_model().remove_package('chd-1')
-        self.nd_sim.sim.get_model().load_package(ftype='chd',
-                                                 fname='zone7_gwm_2024.chd',
-                                                 pname='chd-1',
+    def test_refine_grid_data_ic(self):
+
+        self.nd_sim.sim.get_model().load_package(ftype='ic',
+                                                 fname='zone7_gwm_2024.ic',
+                                                 pname='ic',
                                                  strict=True,
                                                  ref_path='.')
 
-        self.nd_sim.refine_grid_data(streams_shp='./data/gwf/SFR_reaches_final_v2.shp')
-        assert isinstance(self.nd_sim.sim.get_model().chd, mf_pckgs.mfgwfchd.ModflowGwfchd)
+        self.nd_sim.refine_grid_data()
+        assert isinstance(self.nd_sim.sim.get_model('subdomain').ic, mf_pckgs.mfgwfic.ModflowGwfic)
+
+        self.nd_sim.sim.get_model().remove_package('ic')
+        self.nd_sim.sim.get_model('subdomain').remove_package('ic')
+
+    def test_refine_grid_data_sto(self):
+
+        self.nd_sim.sim.get_model().load_package(ftype='sto',
+                                                 fname='zone7_gwm_2024.sto',
+                                                 pname='sto',
+                                                 strict=True,
+                                                 ref_path='.')
+
+        self.nd_sim.refine_grid_data()
+        assert isinstance(self.nd_sim.sim.get_model('subdomain').sto, mf_pckgs.mfgwfsto.ModflowGwfsto)
+
+        self.nd_sim.sim.get_model().remove_package('sto')
+        self.nd_sim.sim.get_model('subdomain').remove_package('sto')
+
+    def test_refine_grid_data_npf(self):
+
+        self.nd_sim.sim.get_model().load_package(ftype='npf',
+                                                 fname='zone7_gwm_2024.npf',
+                                                 pname='npf',
+                                                 strict=True,
+                                                 ref_path='.')
+
+        self.nd_sim.refine_grid_data()
+        assert isinstance(self.nd_sim.sim.get_model('subdomain').npf, mf_pckgs.mfgwfnpf.ModflowGwfnpf)
+
+        self.nd_sim.sim.get_model().remove_package('npf')
+        self.nd_sim.sim.get_model('subdomain').remove_package('npf')
+
+    def test_refine_grid_data_with_chd(self):
+
+        self.nd_sim.sim.get_model().load_package(ftype='chd',
+                                                 fname='zone7_gwm_2024.chd',
+                                                 pname='chd',
+                                                 strict=True,
+                                                 ref_path='.')
+
+        self.nd_sim.refine_grid_data()
+        assert isinstance(self.nd_sim.sim.get_model('subdomain').chd_0, mf_pckgs.mfgwfchd.ModflowGwfchd)
+
+        self.nd_sim.sim.get_model().remove_package('chd')
+        self.nd_sim.sim.get_model('subdomain').remove_package('chd_0')
 
     def test_refine_grid_data_with_rch_list(self):
 
-        self.nd_sim.sim.get_model().remove_package('rcha-1')
         self.nd_sim.sim.get_model().load_package(ftype='rch',
                                                  fname='zone7_gwm_2024.list.rch',
                                                  pname='rch-1',
                                                  strict=True,
                                                  ref_path='.')
 
-        self.nd_sim.refine_grid_data(streams_shp='./data/gwf/SFR_reaches_final_v2.shp')
-        self.nd_sim.sim.get_model().rch.plot()
-        plt.show()
+        self.nd_sim.refine_grid_data()
+        assert isinstance(self.nd_sim.sim.get_model('subdomain').rch_0, mf_pckgs.mfgwfrch.ModflowGwfrch)
+
+        self.nd_sim.sim.get_model().remove_package('rch-1')
+        self.nd_sim.sim.get_model('subdomain').remove_package('rch_0')
+
+    def test_refine_grid_data_with_maw(self):
+
+        self.nd_sim.sim.get_model().load_package(ftype='maw',
+                                                 fname='zone7_gwm_2024.maw',
+                                                 pname='maw-1',
+                                                 strict=True,
+                                                 ref_path='.')
+
+        self.nd_sim.refine_grid_data()
+        assert isinstance(self.nd_sim.sim.get_model('subdomain').maw_0, mf_pckgs.mfgwfmaw.ModflowGwfmaw)
+
+        self.nd_sim.sim.get_model().remove_package('maw-1')
+        self.nd_sim.sim.get_model('subdomain').remove_package('maw_0')
+
+    def test_refine_grid_data_with_rcha(self):
+
+        self.nd_sim.sim.get_model().load_package(ftype='rcha',
+                                                 fname='zone7_gwm_2024.rch',
+                                                 pname='rcha-1',
+                                                 strict=True,
+                                                 ref_path='.')
+
+        self.nd_sim.refine_grid_data()
+        assert isinstance(self.nd_sim.sim.get_model('subdomain').rcha_0, mf_pckgs.mfgwfrcha.ModflowGwfrcha)
+
+        self.nd_sim.sim.get_model().remove_package('rcha-1')
+        self.nd_sim.sim.get_model('subdomain').remove_package('rcha_0')
 
     def test_refine_grid_data_with_sfr(self):
+        nested_grid = NestedDomain.from_parent_model(sim_ws="./data/gwf", load_only=['ims'])
 
-        with open('data/gwf/nd_simul_irregu_domain_sfr.pckl', 'rb') as f:
-            nd_sim = pickle.load(f)
+        shp = 'data/gwf/subdomain.shp'
+        nested_grid.define_subdomain(name="subdomain",
+                                          nested_domain_shp=shp,
+                                          xoff=6135367,
+                                          yoff=2047406,
+                                          num_cells_per_parent_cell=2,
+                                          num_layers_per_parent_layer=[2, 2, 2] + [1] * 7)
+        nd_sim = nested_grid.get_flow_simulation()
+
+        nd_sim.sim.get_model().load_package(ftype='sfr',
+                                            fname='zone7_gwm_2024.sfr',
+                                            pname='sfr-1',
+                                            strict=True,
+                                            ref_path='.')
+
+        # with open('data/gwf/nd_simul_irregu_domain_sfr.pckl', 'rb') as f:
+        #     nd_sim = pickle.load(f)
 
         nd_sim.refine_grid_data(streams_shp='./data/gwf/SFR_reaches_final_v2.shp')
+        assert isinstance(nd_sim.sim.get_model('subdomain').sfr_0, mf_pckgs.mfgwfsfr.ModflowGwfsfr)
+
 
     def test_write_simulation(self):
         self.nd_sim.write_simulation(sim_ws='./data/test_gwf')
