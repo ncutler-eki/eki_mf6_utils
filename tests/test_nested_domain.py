@@ -13,7 +13,7 @@ class TestNestedDomain(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.nested_grid = NestedDomain.from_parent_model(sim_ws="./data/gwf")
-        with open("./data/gwf/lgr.pckl", "rb") as file:
+        with open("./data/gwf/lgr2.pckl", "rb") as file:
             cls.lgr = pickle.load(file)
 
     def test_constructor_filenotfound(self):
@@ -47,7 +47,6 @@ class TestNestedDomain(unittest.TestCase):
                                           xoff=xoff,
                                           yoff=yoff,
                                           angrot=angrot,
-                                          crs=crs,
                                           num_cells_per_parent_cell=2,
                                           num_layers_per_parent_layer=[2, 2, 2] + [1]*7)
         assert (self.nested_grid.gwf.dis.idomain.get_data()[kstart:kstop+1, istart:istop+1, jstart:jstop+1] == 0).all()
