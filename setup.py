@@ -5,6 +5,7 @@ setup(
     version='0.0.1',
     install_requires=['numpy',
                       'matplotlib',
+                      'shapely',
                       'fiona',
                       'rasterio',
                       'flopy @ git+https://github.com/mmaneta/flopy.git@nonzero_lgr',
