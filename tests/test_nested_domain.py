@@ -1,6 +1,6 @@
 import unittest
 import matplotlib.pyplot as plt
-from src.eki_mf6_utils import NestedDomain, NestedDomainSimulation
+from eki_lgr_utils.nested_domain import NestedDomain, NestedDomainSimulation
 import pickle
 import copy
 
