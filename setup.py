@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='eki_mf6_utils',
@@ -7,9 +7,9 @@ setup(
                       'matplotlib',
                       'fiona',
                       'rasterio',
-                      'git+https://github.com/mmaneta/flopy.git@nonzero_lgr',
+                      'flopy @ git+https://github.com/mmaneta/flopy.git@nonzero_lgr',
                       'jupyterlab'],
-    package_dir={'': 'src'},
+    packages=find_packages(),
     url='',
     license='',
     author='Marco Maneta',
