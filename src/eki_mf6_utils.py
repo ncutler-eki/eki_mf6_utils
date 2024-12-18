@@ -24,11 +24,40 @@ logger = getLogger(__name__)
 REACH_FLAG = 999999
 
 
-class NestedDomain:
+class NestedDomain:    
+    """Class for managing local grid refinements and nested domains in a MODFLOW 6 simulation.
+
+
+    Attributes:
+        
+        sim: MODFLOW 6 simulation object.        
+        gwf: The groundwater flow groundwater flow model.
+        model.        
+        parent_model_name: Name of the parent model.
+        parent_domain: The parent parent_domain: The parent model's model's grid.
+        grid.
+        lst_subdomain_names: List of subdomain lst_subdomain_names: List of subdomain names.
+        names.
+        lst_subdomain_lgr: List of lst_subdomain_lgr: List of local grid local grid refinement objects for subdomains.
+    refinement objects for subdomains.
+    """
+    
     def __init__(self,
                  sim=None,
                  gwf=None,
                  modelgrid=None):
+        def __init__(self, sim=None, gwf=None, modelgrid=None):
+            """Initialize a NestedDomain instance with optional simulation, groundwater flow model, and model grid.
+
+            This method sets up the initial configuration for a nested domain, preparing it for subdomain creation and management. It allows flexible initialization with optional parameters for simulation, groundwater flow model, and model grid.
+
+            Args:
+                sim: MODFLOW 6 simulation object (optional).
+                gwf: Groundwater flow model object (optional).
+                modelgrid: Model grid object (optional). If not provided and gwf is given, the grid will be extracted from the gwf model.
+        
+            """
+
 
         self.sim = sim
         self.gwf = gwf
@@ -45,6 +74,21 @@ class NestedDomain:
 
     @classmethod
     def from_parent_model(cls, gwf_model_name: str = None, **kwargs):
+        """Create a NestedDomain instance from an existing MODFLOW 6 simulation and groundwater flow model. 
+
+    This class method loads a MODFLOW 6 simulation and retrieves a specific groundwater flow model, allowing for easy instantiation of a NestedDomain from existing model files.
+
+    Args:
+        gwf_model_name: Name of the groundwater flow model to retrieve from the simulation.
+        **kwargs: Additional keyword arguments to pass to the simulation loading method.
+
+    Returns:
+        A new NestedDomain instance initialized with the loaded simulation and groundwater flow model.
+
+    Raises:
+        FileNotFoundError: If the simulation or model cannot be loaded successfully.
+        """
+        
         try:
             sim = flopy.mf6.MFSimulation.load(**kwargs)
             gwf = sim.get_model(gwf_model_name)
@@ -67,6 +111,30 @@ class NestedDomain:
                          angrot: float = 0.0,
                          num_cells_per_parent_cell: int = 3,
                          num_layers_per_parent_layer: list = 1):
+        """Define a nested subdomain within the parent groundwater model grid.
+
+    This method creates a refined subdomain either by specifying grid indices or using a shapefile,
+    allowing for localized high-resolution modeling within a coarser parent grid.
+
+    Args:
+        name: Name of the subdomain.
+        istart: Starting row index of the subdomain.
+        istop: Ending row index of the subdomain.
+        jstart: Starting column index of the subdomain.
+        jstop: Ending column index of the subdomain.
+        kstart: Starting layer index of the subdomain.
+        kstop: Ending layer index of the subdomain.
+        nested_domain_shp: Path to a shapefile defining the subdomain boundary.
+        feature_field: Field in the shapefile used to identify subdomain features.
+        xoff: X-axis offset for coordinate transformation.
+        yoff: Y-axis offset for coordinate transformation.
+        angrot: Rotation angle for coordinate transformation.
+        num_cells_per_parent_cell: Number of child cells per parent cell.
+        num_layers_per_parent_layer: Number of child layers per parent layer.
+
+    Returns:
+        None. Modifies the parent model's grid and adds a new subdomain to the NestedDomain instance.
+        """       
 
         if istart == istop == jstart == jstop == kstart == kstop == nested_domain_shp is None:
             print("Either the bounding box or a shapefile to define the subdomain is required")
@@ -119,6 +187,20 @@ class NestedDomain:
         self._display_domain_info()
 
     def _create_exchange_data(self, lgr, subdomain_name: str):
+        """Generate exchange data between a parent model and a nested subdomain.
+
+    This method creates the necessary exchange information to couple a 
+    parent groundwater flow model with a refined local grid refinement (LGR) subdomain.
+
+    Args:
+        lgr: Local grid refinement object for the subdomain.
+        subdomain_name: Name of the subdomain being created.
+
+    Returns:
+        A MODFLOW 6 groundwater-groundwater exchange object connecting the parent and subdomain models.
+    """
+        
+        
         logger.info("Creating exchange data for subdomain {}. This can take a minute...".format(subdomain_name))
         exchangedata = lgr.get_exchange_data(angldegx=True, cdist=True)
         exg = flopy.mf6.ModflowGwfgwf(self.sim,
@@ -134,6 +216,14 @@ class NestedDomain:
         return exg
 
     def get_flow_simulation(self):
+        """Prepare and configure a nested domain flow simulation with multiple subdomains.
+
+    This method creates exchange data between the parent model and all defined subdomains,
+    then generates a comprehensive nested domain simulation object.
+
+    Returns:
+        A NestedDomainSimulation object containing the complete simulation configuration with parent and nested models.
+        """        
 
         lst_exchg = []
         for lgr, name in zip(self.lst_subdomain_lgr, self.lst_subdomain_names):
@@ -146,6 +236,16 @@ class NestedDomain:
                                       self.lst_subdomain_lgr)
 
     def _display_domain_info(self):
+        
+        """Print detailed grid information for each subdomain in the nested domain configuration.
+
+        This method provides a comprehensive summary of grid characteristics for both parent
+        and nested grids, including layer, row, and column counts, as well as spatial resolution details.
+
+        Note:
+            This is a private method primarily used for debugging and informational purposes.
+        """
+        
         for i, d in enumerate(self.lst_subdomain_names):
 
             print(f"DOMAIN {d}:")
@@ -161,6 +261,16 @@ class NestedDomain:
                 print(f"\t\tMin col res {np.asarray(p.delr).min()}")
 
     def plot_grid(self):
+        """Visualize the grid configurations for all nested subdomains in the model.
+
+        This method creates a graphical representation of parent and child grids, 
+        allowing for visual comparison of grid refinement across different subdomains.
+
+        Note:
+            The plot displays parent grids in blue and nested (child) grids in red,
+            with each subdomain plotted in a separate subplot.
+        """
+        
         fig = plt.figure(figsize=(10, 10))
         for i, d in enumerate(self.lst_subdomain_names):
             ax = fig.add_subplot(i + 1, 1, i + 1, aspect='equal')
@@ -172,12 +282,39 @@ class NestedDomain:
 
 
 class NestedDomainSimulation:
+    """A comprehensive simulation management class for nested groundwater flow models with multiple domains.
+
+    This class handles the creation, configuration, and refinement of nested groundwater flow models, 
+    facilitating complex multi-resolution simulations with advanced grid management and package transfer capabilities.
+
+    Attributes:
+        sim: The parent MODFLOW 6 simulation object.
+        lst_subdomain_names: List of names for nested subdomains.
+        lst_subdomain_lgr: List of local grid refinement objects for subdomains.
+        parent_model_name: Name of the parent groundwater flow model.
+        streams_shp: Optional shapefile path for stream network data.
+    """    
     def __init__(self,
                  sim,
                  parent_model_name,
                  lst_subdomain_names,
                  lst_subdomain_lgr,
                  ):
+        
+        """Initialize a NestedDomainSimulation with parent and child model configurations.
+
+        This method sets up the core structure for a nested domain simulation, 
+        preparing the framework for multi-resolution groundwater modeling.
+
+        Args:
+            sim: MODFLOW 6 simulation object.
+            parent_model_name: Name of the parent groundwater flow model.
+            lst_subdomain_names: List of names for nested subdomains.
+            lst_subdomain_lgr: List of local grid refinement objects for subdomains.
+
+        Raises:
+            MFDataException: If there are issues with the simulation data during initialization.
+        """
         try:
             self.sim = sim
             self.lst_subdomain_names = lst_subdomain_names
@@ -192,6 +329,19 @@ class NestedDomainSimulation:
             raise e
 
     def _setup_child_model(self, lgr, subdomain_name: str):
+        """Create a child groundwater flow model within a nested domain simulation.
+
+        This method initializes a new MODFLOW 6 groundwater flow model for a specific subdomain,
+        configuring its discretization and output control settings.
+
+        Args:
+            lgr: Local grid refinement object for the child model.
+            subdomain_name: Name of the subdomain being created.
+
+        Note:
+            This is a private method used internally during nested domain simulation setup.
+        """
+        
         logger.info(f"Creating core model structure for subdomain {subdomain_name}")
         lgrc = lgr.child
         gwf = flopy.mf6.ModflowGwf(self.sim, modelname=subdomain_name, save_flows=True)
@@ -204,6 +354,17 @@ class NestedDomainSimulation:
                                     saverecord=[("HEAD", "ALL"), ("BUDGET", "ALL")])
 
     def _create_core_model_structure(self):
+        """Construct the fundamental model structure for a nested domain simulation.
+
+        This method sets up child models for each subdomain and configures the
+        iterative model solver (IMS) package for the entire simulation, 
+        ensuring proper solver settings and model registration.
+
+        Note:
+            This is a private method used internally during nested domain simulation
+            initialization to prepare the core computational framework.
+        """
+        
         for lgr, name in zip(self.lst_subdomain_lgr, self.lst_subdomain_names):
             self._setup_child_model(lgr, name)
 
@@ -223,6 +384,21 @@ class NestedDomainSimulation:
 
     def refine_grid_data(self,
                          streams_shp: str = None):
+        """Regrid and transfer package data from parent to child models across multiple subdomains.
+
+        This method systematically transfers and refines various model package data 
+        (initial conditions, storage, flow properties, recharge, wells, streams, and constant head)
+        from the parent model to each child model using local grid refinement techniques.
+
+        Args:
+            streams_shp: Optional path to a shapefile containing stream network data, required for Stream Flow Routing (SFR) package regridding.
+
+        Note:
+            Supports regridding for packages including initial conditions (IC),
+            storage (STO), flow properties (NPF), recharge (RCHA/RCH),
+            multi-aquifer wells (MAW), stream routing (SFR), and constant head (CHD).
+    """
+        
         self.streams_shp = streams_shp
         parent_model = self.sim.get_model(self.parent_model_name)
         for name, lgr in zip(self.lst_subdomain_names, self.lst_subdomain_lgr):
@@ -238,6 +414,22 @@ class NestedDomainSimulation:
 
     @staticmethod
     def _regrid_data_layers(array3d, lgr) -> np.array:
+        """Replicate and redistribute 3D array data across refined grid layers.
+
+        This method transforms parent model layer data into a more detailed child
+        model grid by replicating arrays according to local grid refinement specifications.
+
+        Args:
+            array3d: Three-dimensional input array from the parent model.
+            lgr: Local grid refinement object defining grid transformation parameters.
+
+        Returns:
+            A numpy array with redistributed data matching the child model's grid dimensions.
+
+        Note:
+            Handles both constant and variable numbers of sublayers per parent layer.
+        """
+        
 
         if array3d is None:
             return
@@ -259,6 +451,21 @@ class NestedDomainSimulation:
 
     @staticmethod
     def _regrid_transient_layers(array3d, lgr) -> np.array:
+        """Redistribute transient (time-varying) array data across refined grid layers.
+
+        This method transforms time-dependent parent model layer data into a more
+        detailed child model grid by replicating arrays for each stress period.
+
+        Args:
+            array3d: Dictionary of three-dimensional arrays representing data across stress periods.
+            lgr: Local grid refinement object defining grid transformation parameters.
+
+        Returns:
+            A dictionary with regridded arrays corresponding to each original stress period.
+
+        Note:
+            Preserves the temporal structure of the input data while adapting to the child model's grid resolution.
+        """
 
         if array3d is None:
             return
@@ -273,6 +480,21 @@ class NestedDomainSimulation:
 
     @singledispatchmethod
     def regrid_package(self, pmodel, cmodel, package, lgr, cname):
+        """Provide a generic method for regridding different types of MODFLOW packages across nested domains.
+
+        This method serves as a base implementation for package-specific grid refinement, 
+        using single dispatch to handle different package types dynamically.
+
+        Args:
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            package: MODFLOW package to be regridded.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Raises:
+            NotImplementedError: If a specific package type does not have a registered regridding method.
+        """
         raise NotImplementedError(package)
 
     @regrid_package.register
@@ -282,13 +504,25 @@ class NestedDomainSimulation:
           cmodel: flopy.mf6.ModflowGwf,
           lgr: flopy.utils.lgrutil.Lgr,
           cname: str) -> flopy.mf6.modflow.mfgwfic.ModflowGwfic:
+        """Regrid the Initial Conditions (IC) package for a nested domain simulation.
+
+        This method transforms the starting heads from a parent model to a child model with refined grid resolution.
+
+        Args:
+            pkg: Initial Conditions package from the parent model.
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Returns:
+            A new Initial Conditions package configured for the child model with regridded starting heads.
+        """
 
         strtp = pkg.strt.get_data()
-        strtc = self._regrid_data_layers(strtp, lgr)
+        strtc = self._regrid_data_layers(strtp, lgr)        
 
-        cpkg = pkg.__class__(cmodel, strt=strtc)
-
-        return cpkg
+        return pkg.__class__(cmodel, strt=strtc)
 
     @regrid_package.register
     def _(self,
@@ -297,6 +531,26 @@ class NestedDomainSimulation:
           cmodel: flopy.mf6.modflow.ModflowGwf,
           lgr: flopy.utils.lgrutil.Lgr,
           cname: str) -> flopy.mf6.modflow.mfgwfsto.ModflowGwfsto:
+        """Regrid the Storage (STO) package for a nested domain simulation.
+
+        This method transforms storage-related parameters from a parent model
+        to a child model with refined grid resolution, including specific storage, 
+        specific yield, and conversion type.
+
+        Args:
+            pkg: Storage package from the parent model.
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Returns:
+            A new Storage package configured for the child model with regridded storage parameters.
+
+        Raises:
+            NotImplementedError: If the package contains stress period data that cannot be regridded.
+        """
+        
 
         data_arrays = [getattr(pkg, n).get_data() for n in
                        ["ss", "sy", "iconvert", ]]
@@ -306,7 +560,7 @@ class NestedDomainSimulation:
         if pkg.has_stress_period_data:
             raise NotImplementedError("regridding of data for tvs package not implemented")
 
-        cpkg = pkg.__class__(cmodel,
+        return pkg.__class__(cmodel,
                              storagecoefficient=pkg.storagecoefficient,
                              ss_confined_only=pkg.ss_confined_only,
                              steady_state=pkg.steady_state,
@@ -315,8 +569,7 @@ class NestedDomainSimulation:
                              sy=syc,
                              iconvert=iconvertc,
                              save_flows=True)
-
-        return cpkg
+        
 
     @regrid_package.register
     def _(self,
@@ -325,13 +578,29 @@ class NestedDomainSimulation:
           cmodel: flopy.mf6.ModflowGwf,
           lgr: flopy.utils.lgrutil.Lgr,
           cname: str) -> flopy.mf6.modflow.mfgwfnpf.ModflowGwfnpf:
+        """Regrid the Node Property Flow (NPF) package for a nested domain simulation.
+
+        This method transforms hydraulic conductivity, cell type, and other spatial
+        properties from a parent model to a child model with refined grid resolution.
+
+        Args:
+            pkg: Node Property Flow package from the parent model.
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Returns:
+            A new Node Property Flow package configured for the child model with regridded spatial properties.
+        """
+        
 
         data_arrays = [getattr(pkg, n).get_data() for n in ["icelltype", "k", "k22", "k33",
                                                             "angle1", "angle2", "angle3", "wetdry"]]
         icelltypec, kc, k22c, k33c, angle1c, angle2c, angle3c, wetdryc = [self._regrid_data_layers(data, lgr)
                                                                           for data in data_arrays]
 
-        cpkg = pkg.__class__(cmodel,
+        return pkg.__class__(cmodel,
                              save_flows=True,
                              save_specific_discharge=pkg.save_specific_discharge,
                              alternative_cell_averaging=pkg.alternative_cell_averaging.data,
@@ -350,8 +619,7 @@ class NestedDomainSimulation:
                              angle3=angle3c,
                              wetdry=wetdryc
                              )
-
-        return cpkg
+        
 
     @regrid_package.register
     def _(self,
@@ -360,18 +628,32 @@ class NestedDomainSimulation:
           cmodel: flopy.mf6.ModflowGwf,
           lgr: flopy.utils.lgrutil.Lgr,
           cname: str) -> flopy.mf6.modflow.mfgwfrcha.ModflowGwfrcha:
+        """Regrid the array-based Recharge (RCHA) package for a nested domain simulation.
+
+        This method transforms transient recharge data from a parent model to a 
+        child model with refined grid resolution, preserving the temporal structure of the recharge.
+
+        Args:
+            pkg: Recharge package from the parent model.
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Returns:
+            A new Recharge package configured for the child model with regridded recharge data.
+        """
 
         print("About to regrid recharge transient grid...")
         rch_arrays = pkg.recharge.get_data()
         dct_rch = self._regrid_transient_layers(rch_arrays, lgr)
 
-        cpkg = pkg.__class__(cmodel,
+        return pkg.__class__(cmodel,
                              readasarrays=pkg.readasarrays,
                              recharge=dct_rch,
                              save_flows=True,
                              )
-
-        return cpkg
+        
 
     @regrid_package.register
     def _(self,
@@ -380,6 +662,21 @@ class NestedDomainSimulation:
           cmodel: flopy.mf6.ModflowGwf,
           lgr: flopy.utils.lgrutil.Lgr,
           cname: str) -> flopy.mf6.modflow.mfgwfrch.ModflowGwfrch:
+        """Regrid the list-based Recharge (RCH) package for a nested domain simulation.
+
+        This method transforms stress period recharge data from a parent model 
+        to a child model with refined grid resolution, maintaining the original package configuration.
+
+        Args:
+            pkg: Recharge package from the parent model.
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Returns:
+            A new Recharge package configured for the child model with remapped stress period data.
+        """
 
         print("About to process recharge transient data...")
         rch_rec = pkg.stress_period_data
@@ -402,6 +699,22 @@ class NestedDomainSimulation:
                         cmodel: flopy.mf6.ModflowGwf,
                         lgr: flopy.utils.lgrutil.Lgr,
                         cname: str) -> flopy.mf6.modflow.mfgwfmaw.ModflowGwfmaw:
+        """Regrid the Multi-Aquifer Well (MAW) package for a nested domain simulation.
+
+        This method transforms well connection data, package parameters, 
+        and stress period information from a parent model to a child model, 
+        focusing on wells located within the child grid domain.
+
+        Args:
+            pkg: Multi-Aquifer Well package from the parent model.
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Returns:
+            A new Multi-Aquifer Well package configured for the child model with updated well connections and parameters.
+        """
 
         fn_head_records = None
         fn_budget_records = None
@@ -442,7 +755,7 @@ class NestedDomainSimulation:
                                                     ).set_index('ifno').loc[df_c_packagedata.index].to_records(
                 index=True)
 
-        cpkg = pkg.__class__(cmodel,
+        return pkg.__class__(cmodel,
                              save_flows=True,
                              print_input=pkg.print_input,
                              print_head=pkg.print_head,
@@ -457,8 +770,7 @@ class NestedDomainSimulation:
                              connectiondata=c_conns,
                              perioddata=dct_c_sp
                              )
-        return cpkg
-
+        
     @regrid_package.register
     def _(self,
           pkg: flopy.mf6.modflow.mfgwfsfr.ModflowGwfsfr,
@@ -466,6 +778,21 @@ class NestedDomainSimulation:
           cmodel: flopy.mf6.ModflowGwf,
           lgr: flopy.utils.lgrutil.Lgr,
           cname: str) -> flopy.mf6.modflow.mfgwfsfr.ModflowGwfsfr:
+        """Regrid the Stream Flow Routing (SFR) package for a nested domain simulation.
+
+        This method transforms stream network data from a parent model to a child model,
+        including connections, package data, and mover package configuration to maintain hydrological continuity.
+
+        Args:
+            pkg: Stream Flow Routing package from the parent model.
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Returns:
+            A new Stream Flow Routing package configured for the child model with updated stream network connections and parameters.
+        """
 
         fn_stage_records = None
         fn_budget_records = None
@@ -504,7 +831,7 @@ class NestedDomainSimulation:
             pmodel.sfr.mover = True
             pmodel.sfr.write()
 
-        cpkg = pkg.__class__(cmodel,
+        return pkg.__class__(cmodel,
                              save_flows=pkg.save_flows,
                              stage_filerecord=fn_stage_records,
                              budget_filerecord=fn_budget_records,
@@ -520,7 +847,7 @@ class NestedDomainSimulation:
                              perioddata={0: [[0, "INFLOW", 0.0]]}
                              )
 
-        return cpkg
+
 
     @regrid_package.register
     def _(self,
@@ -529,6 +856,20 @@ class NestedDomainSimulation:
           cmodel: flopy.mf6.ModflowGwf,
           lgr: flopy.utils.lgrutil.Lgr,
           cname: str) -> flopy.mf6.modflow.mfgwfchd.ModflowGwfchd:
+        """Regrid the Constant Head (CHD) package for a nested domain simulation.
+
+        This method transforms constant head boundary conditions from a parent model to a child model, preserving stress period data and package configuration across different grid resolutions.
+
+        Args:
+            pkg: Constant Head package from the parent model.
+            pmodel: Parent groundwater flow model.
+            cmodel: Child groundwater flow model.
+            lgr: Local grid refinement object.
+            cname: Name of the child model.
+
+        Returns:
+            A new Constant Head package configured for the child model with remapped stress period data.
+        """
 
         print("About to process CHD transient data...")
         chd_rec = pkg.stress_period_data
@@ -552,25 +893,52 @@ class NestedDomainSimulation:
                           packages: list,
                           period_data: list,
                           name: str) -> flopy.mf6.modflow.mfgwfmvr.ModflowGwfmvr:
+        """Create a new Mover (MVR) package for managing water transfers between models.
+
+        This method generates a MODFLOW 6 Mover package that facilitates water exchanges
+        between groundwater flow models or stream routing packages.
+
+        Args:
+            model: MODFLOW 6 model or simulation object.
+            maxmvr: Maximum number of water transfers allowed.
+            packages: List of packages involved in water transfers.
+            period_data: Detailed water transfer information for each stress period.
+            name: Filename for the Mover package.
+
+        Returns:
+            A configured ModflowMvr package for managing water transfers.
+        """
 
         modelnames=False
         if isinstance(model, flopy.mf6.ModflowGwfgwf):
             modelnames = True
 
-        cpkg = flopy.mf6.ModflowMvr(model,
+        return flopy.mf6.ModflowMvr(model,
                                     modelnames=modelnames,
                                     maxmvr=maxmvr,
                                     maxpackages=len(packages),
                                     packages=packages,
                                     perioddata=period_data,
                                     filename=f"{name}.mvr"
-                                    )
-
-        return cpkg
+                                    )        
 
 
     @staticmethod
     def _produce_package_data(pkg, df_conns, ncons, ndivs):
+        """Prepare package data for Stream Flow Routing (SFR) package during grid refinement.
+
+        This method transforms and adapts reach properties from a parent model to a child model,
+        updating cell identifiers, connection information, and other reach-specific parameters.
+
+        Args:
+            pkg: Parent Stream Flow Routing package.
+            df_conns: DataFrame containing connection information.
+            ncons: Number of connections for each reach.
+            ndivs: Number of diversions for each reach.
+
+        Returns:
+            A record array containing updated reach data for the child model, including cell identifiers, reach properties, and connectivity information.
+        """
         # Open SFR reach properties from parent model
         df_reach_data_p = pd.DataFrame.from_records(pkg.packagedata.array)
 
@@ -585,7 +953,7 @@ class NestedDomainSimulation:
         df_reach_data_c['ncons'] = ncons
         df_reach_data_c['ndivs'] = ndivs
 
-        rec_reach_data = df_reach_data_c[['cellids',
+        return df_reach_data_c[['cellids',
                          'lengths',
                          'rwid',
                          'rgrd',
@@ -596,11 +964,24 @@ class NestedDomainSimulation:
                          'ncon',
                          'ustrf',
                          'ndv']].to_records(index=True)
-
-        return rec_reach_data
+        
 
     @staticmethod
     def _generate_mover_period_data(pmodel_name, cmodel_name, ppkg_name, cpkg_name, df_conns):
+        """Generate water transfer configuration for the Mover package between parent and child models.
+
+        This method creates detailed mover period data that defines water exchanges between different model components, handling both incoming and outgoing water transfers.
+
+        Args:
+            pmodel_name: Name of the parent model.
+            cmodel_name: Name of the child model.
+            ppkg_name: Name of the parent package.
+            cpkg_name: Name of the child package.
+            df_conns: DataFrame containing connection information.
+
+        Returns:
+            A dictionary with mover period data for the first stress period, defining water transfer factors and directions.
+        """
 
         absint = lambda x: int(np.abs(x))
 
