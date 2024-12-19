@@ -88,7 +88,7 @@ as `nested_domain_shp`.
 ```angular2html
 # properties of model domain
 xoff = 6135367
-yoff = 2047406
+yoff = 2033406
 angrot = 0
 
 fn_shapefile = r"Z:\Zone7WaterAgency_C20037\WorkEfforts\Model\LocalGridRefinement\test_lgr_model\shapefiles\pfos_area_polygon.shp"

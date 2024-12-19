@@ -19,6 +19,8 @@ from flopy.utils.lgrutil import Lgr
 from rasterio import features
 from shapely.geometry import MultiLineString, shape
 
+from tqdm import tqdm
+
 logger = getLogger(__name__)
 
 REACH_FLAG = 999999
@@ -1150,8 +1152,9 @@ class NestedDomainSimulation:
         dct_recs = {}
         nlc, nrc, ncc = lgr.child.idomain.shape
         for sp, sp_data in rch_rec.data.items():
+            print(f"Processing sp {sp}")
             lst_sp_rec = []
-            for rec in sp_data:
+            for rec in tqdm(sp_data):
                 kp, ip, jp = rec[0]
                 kc, ics, jcs = self.get_child_kij_index_connections(kp, ip, jp, lgr)
                 for idx in range(len(ics)):
