@@ -317,6 +317,7 @@ class NestedDomainSimulation:
         Raises:
             MFDataException: If there are issues with the simulation data during initialization.
         """
+        self.check_packages = False
         try:
             self.sim = sim
             self.lst_subdomain_names = lst_subdomain_names
@@ -385,7 +386,8 @@ class NestedDomainSimulation:
         self.sim.register_ims_package(self.sim.ims, [self.parent_model_name] + self.lst_subdomain_names)
 
     def refine_grid_data(self,
-                         streams_shp: str = None):
+                         streams_shp: str = None,
+                         check_packages=False):
         """Regrid and transfer package data from parent to child models across multiple subdomains.
 
         This method systematically transfers and refines various model package data 
@@ -394,13 +396,14 @@ class NestedDomainSimulation:
 
         Args:
             streams_shp: Optional path to a shapefile containing stream network data, required for Stream Flow Routing (SFR) package regridding.
+            check_packages: perform check on the regridded packages if method available in flopy
 
         Note:
             Supports regridding for packages including initial conditions (IC),
             storage (STO), flow properties (NPF), recharge (RCHA/RCH),
             multi-aquifer wells (MAW), stream routing (SFR), and constant head (CHD).
     """
-        
+        self.check_packages = check_packages
         self.streams_shp = streams_shp
         parent_model = self.sim.get_model(self.parent_model_name)
         for name, lgr in zip(self.lst_subdomain_names, self.lst_subdomain_lgr):
@@ -691,7 +694,9 @@ class NestedDomainSimulation:
                              stress_period_data=lst_rch_rec,
                              save_flows=True,
                              )
-        print(cpkg.check())
+
+        if self.check_packages:
+            print(cpkg.check())
         return cpkg
 
     @regrid_package.register
@@ -886,7 +891,8 @@ class NestedDomainSimulation:
                              print_flows=pkg.print_flows,
                              save_flows=True,
                              )
-        print(cpkg.check())
+        if self.check_packages:
+            print(cpkg.check())
         return cpkg
 
     @staticmethod
