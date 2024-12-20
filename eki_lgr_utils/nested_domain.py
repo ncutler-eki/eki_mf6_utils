@@ -1148,41 +1148,6 @@ class NestedDomainSimulation:
         else:
             return math.copysign(df_subset.index.max(), x)
 
-    # def _remap_stress_periods(self, rch_rec, lgr, only_top_layer=True):
-    #     dct_recs = {}
-    #     nlc, nrc, ncc = lgr.child.idomain.shape
-    #
-    #     for sp, sp_data in rch_rec.data.items():
-    #         print(f"Processing sp {sp}")
-    #         lst_sp_rec = []
-    #
-    #         for rec in tqdm(sp_data):
-    #             kp, ip, jp = rec[0]
-    #             kc, ics, jcs = self.get_child_kij_index_connections(kp, ip, jp, lgr)
-    #
-    #             # Vectorized boundary and domain checking
-    #             valid_indices = (
-    #                     (ics >= 0) & (ics < nrc) &
-    #                     (jcs >= 0) & (jcs < ncc) &
-    #                     (lgr.child.idomain[kc[0], ics, jcs] != 0)
-    #             )
-    #
-    #             # Select valid indices
-    #             valid_ics = ics[valid_indices]
-    #             valid_jcs = jcs[valid_indices]
-    #
-    #             # Layer selection
-    #             layers = [kc[0]] if only_top_layer else kc
-    #
-    #             # Create records for valid indices and layers
-    #             for k in layers:
-    #                 for idx, (ic, jc) in enumerate(zip(valid_ics, valid_jcs)):
-    #                     lst_sp_rec.append(((k, ic, jc), *tuple(rec)[1:]))
-    #
-    #         dct_recs[sp] = lst_sp_rec
-    #
-    #     return dct_recs
-
     def _remap_stress_periods(self, rch_rec, lgr, only_top_layer=True):
         dct_recs = {}
         nlc, nrc, ncc = lgr.child.idomain.shape
@@ -1190,9 +1155,10 @@ class NestedDomainSimulation:
         dct_arrays = {}
 
         for sp, sp_data in tqdm(rch_rec.data.items()):
+            temp_grid *= 0 ## zero out the matrix
             for i, rec in enumerate(sp_data):
                 try:
-                    temp_grid[rec[0]] = i
+                    temp_grid[rec[0]] = i + 1 #  required because later indices are extracted for nonzero elements
                 except IndexError as e:
                     print(f"Warning: entry in the list of inputs is outside the model domain")
                     print(e)
@@ -1202,7 +1168,7 @@ class NestedDomainSimulation:
             c_temp_array = [self._regrid_data_layers(data, lgr) for sp, data in dct_arrays.items()][0]
             lst_kij = list(zip(*c_temp_array.nonzero()))
             #lst_sp_rec = [(cid, temp_grid[lgr.get_parent_indices(*cid)]) for cid in lst_kij]
-            lst_sp_rec = [(cid, *tuple(sp_data[c_temp_array[cid]])[1:]) for cid in lst_kij]
+            lst_sp_rec = [(cid, *tuple(sp_data[c_temp_array[cid]-1])[1:]) for cid in lst_kij] # subtract 1 to index
 
             dct_recs[sp] = lst_sp_rec
         return dct_recs
