@@ -745,7 +745,7 @@ class NestedDomainSimulation:
 
         df_cconns = pd.DataFrame.from_records(lst_c_connections,
                                               columns=lst_c_connections[0].dtype.names)
-        df_lst_rec = df_cconns.groupby(df_cconns['ifno']).apply(self._update_connection_records, lgr=lgr, include_groups=False)
+        df_lst_rec = df_cconns.groupby(df_cconns['ifno']).apply(self._update_connection_records, lgr=lgr, include_groups=True)
         c_conns = df_lst_rec.to_records(index=False)
 
         # update ngwfnodes
@@ -1217,7 +1217,7 @@ class NestedDomainSimulation:
                 r[2] = (kc, ic, jc)
                 lst_recs.append(r)
 
-        return pd.DataFrame(lst_recs)
+        return pd.DataFrame(lst_recs,columns=recs.dtypes.index)
 
     def write_simulation(self, sim_ws: str = None):
         if sim_ws is not None:
