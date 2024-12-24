@@ -17,8 +17,7 @@ from flopy.utils import GridIntersect
 from flopy.utils import Raster
 from flopy.utils.lgrutil import Lgr
 from rasterio import features
-from shapely.geometry import MultiLineString, shape
-
+from shapely.geometry import shape
 from tqdm import tqdm
 
 logger = getLogger(__name__)
@@ -26,7 +25,7 @@ logger = getLogger(__name__)
 REACH_FLAG = 999999
 
 
-class NestedDomain:    
+class NestedDomain:
     """Class for managing local grid refinements and nested domains in a MODFLOW 6 simulation.
 
 
@@ -43,7 +42,7 @@ class NestedDomain:
         lst_subdomain_lgr: List of lst_subdomain_lgr: List of local grid local grid refinement objects for subdomains.
     refinement objects for subdomains.
     """
-    
+
     def __init__(self,
                  sim=None,
                  gwf=None,
@@ -59,7 +58,6 @@ class NestedDomain:
                 modelgrid: Model grid object (optional). If not provided and gwf is given, the grid will be extracted from the gwf model.
         
             """
-
 
         self.sim = sim
         self.gwf = gwf
@@ -90,7 +88,7 @@ class NestedDomain:
     Raises:
         FileNotFoundError: If the simulation or model cannot be loaded successfully.
         """
-        
+
         try:
             sim = flopy.mf6.MFSimulation.load(**kwargs)
             gwf = sim.get_model(gwf_model_name)
@@ -136,7 +134,7 @@ class NestedDomain:
 
     Returns:
         None. Modifies the parent model's grid and adds a new subdomain to the NestedDomain instance.
-        """       
+        """
 
         if istart == istop == jstart == jstop == kstart == kstop == nested_domain_shp is None:
             print("Either the bounding box or a shapefile to define the subdomain is required")
@@ -180,6 +178,7 @@ class NestedDomain:
                 ncppl=num_layers_per_parent_layer,
                 xllp=self.gwf.modelgrid.xoffset,
                 yllp=self.gwf.modelgrid.yoffset,
+                unmasked_idomainp=self.gwf.dis.idomain.data
                 )
         )
 
@@ -201,8 +200,7 @@ class NestedDomain:
     Returns:
         A MODFLOW 6 groundwater-groundwater exchange object connecting the parent and subdomain models.
     """
-        
-        
+
         logger.info("Creating exchange data for subdomain {}. This can take a minute...".format(subdomain_name))
         exchangedata = lgr.get_exchange_data(angldegx=True, cdist=True)
         exg = flopy.mf6.ModflowGwfgwf(self.sim,
@@ -225,7 +223,7 @@ class NestedDomain:
 
     Returns:
         A NestedDomainSimulation object containing the complete simulation configuration with parent and nested models.
-        """        
+        """
 
         lst_exchg = []
         for lgr, name in zip(self.lst_subdomain_lgr, self.lst_subdomain_names):
@@ -238,7 +236,7 @@ class NestedDomain:
                                       self.lst_subdomain_lgr)
 
     def _display_domain_info(self):
-        
+
         """Print detailed grid information for each subdomain in the nested domain configuration.
 
         This method provides a comprehensive summary of grid characteristics for both parent
@@ -247,7 +245,7 @@ class NestedDomain:
         Note:
             This is a private method primarily used for debugging and informational purposes.
         """
-        
+
         for i, d in enumerate(self.lst_subdomain_names):
 
             print(f"DOMAIN {d}:")
@@ -272,7 +270,7 @@ class NestedDomain:
             The plot displays parent grids in blue and nested (child) grids in red,
             with each subdomain plotted in a separate subplot.
         """
-        
+
         fig = plt.figure(figsize=(10, 10))
         for i, d in enumerate(self.lst_subdomain_names):
             ax = fig.add_subplot(i + 1, 1, i + 1, aspect='equal')
@@ -295,14 +293,15 @@ class NestedDomainSimulation:
         lst_subdomain_lgr: List of local grid refinement objects for subdomains.
         parent_model_name: Name of the parent groundwater flow model.
         streams_shp: Optional shapefile path for stream network data.
-    """    
+    """
+
     def __init__(self,
                  sim,
                  parent_model_name,
                  lst_subdomain_names,
                  lst_subdomain_lgr,
                  ):
-        
+
         """Initialize a NestedDomainSimulation with parent and child model configurations.
 
         This method sets up the core structure for a nested domain simulation, 
@@ -344,7 +343,7 @@ class NestedDomainSimulation:
         Note:
             This is a private method used internally during nested domain simulation setup.
         """
-        
+
         logger.info(f"Creating core model structure for subdomain {subdomain_name}")
         lgrc = lgr.child
         gwf = flopy.mf6.ModflowGwf(self.sim, modelname=subdomain_name, save_flows=True)
@@ -367,7 +366,7 @@ class NestedDomainSimulation:
             This is a private method used internally during nested domain simulation
             initialization to prepare the core computational framework.
         """
-        
+
         for lgr, name in zip(self.lst_subdomain_lgr, self.lst_subdomain_names):
             self._setup_child_model(lgr, name)
 
@@ -434,7 +433,6 @@ class NestedDomainSimulation:
         Note:
             Handles both constant and variable numbers of sublayers per parent layer.
         """
-        
 
         if array3d is None:
             return
@@ -483,6 +481,14 @@ class NestedDomainSimulation:
 
         return dct_regridded_array
 
+    def _drop_wells_parent_domain(self, pkg, pmodel, lgr):
+        parent_model = self.sim.get_model(self.parent_model_name)
+        p_idomain = lgr.parent.idomain
+
+        for w in pkg.connectiondata.array.T:
+            pass
+
+
     @singledispatchmethod
     def regrid_package(self, pmodel, cmodel, package, lgr, cname):
         """Provide a generic method for regridding different types of MODFLOW packages across nested domains.
@@ -525,7 +531,7 @@ class NestedDomainSimulation:
         """
 
         strtp = pkg.strt.get_data()
-        strtc = self._regrid_data_layers(strtp, lgr)        
+        strtc = self._regrid_data_layers(strtp, lgr)
 
         return pkg.__class__(cmodel, strt=strtc)
 
@@ -555,7 +561,6 @@ class NestedDomainSimulation:
         Raises:
             NotImplementedError: If the package contains stress period data that cannot be regridded.
         """
-        
 
         data_arrays = [getattr(pkg, n).get_data() for n in
                        ["ss", "sy", "iconvert", ]]
@@ -574,7 +579,6 @@ class NestedDomainSimulation:
                              sy=syc,
                              iconvert=iconvertc,
                              save_flows=True)
-        
 
     @regrid_package.register
     def _(self,
@@ -598,7 +602,6 @@ class NestedDomainSimulation:
         Returns:
             A new Node Property Flow package configured for the child model with regridded spatial properties.
         """
-        
 
         data_arrays = [getattr(pkg, n).get_data() for n in ["icelltype", "k", "k22", "k33",
                                                             "angle1", "angle2", "angle3", "wetdry"]]
@@ -624,7 +627,6 @@ class NestedDomainSimulation:
                              angle3=angle3c,
                              wetdry=wetdryc
                              )
-        
 
     @regrid_package.register
     def _(self,
@@ -658,7 +660,6 @@ class NestedDomainSimulation:
                              recharge=dct_rch,
                              save_flows=True,
                              )
-        
 
     @regrid_package.register
     def _(self,
@@ -745,7 +746,17 @@ class NestedDomainSimulation:
 
         df_cconns = pd.DataFrame.from_records(lst_c_connections,
                                               columns=lst_c_connections[0].dtype.names)
-        df_lst_rec = df_cconns.groupby(df_cconns['ifno']).apply(self._update_connection_records, lgr=lgr, include_groups=True)
+        df_lst_rec = df_cconns.groupby(
+            df_cconns['ifno'])[['ifno',
+                                'icon',
+                                'cellid',
+                                'scrn_top',
+                                'scrn_bot',
+                                'hk_skin',
+                                'radius_skin']].apply(
+            self._update_connection_records,
+            lgr=lgr,
+            include_groups=True)
         c_conns = df_lst_rec.to_records(index=False)
 
         # update ngwfnodes
@@ -762,6 +773,9 @@ class NestedDomainSimulation:
                                                     ).set_index('ifno').loc[df_c_packagedata.index].to_records(
                 index=True)
 
+        # drop wells in inactivate parent areas
+        self._drop_wells_parent_domain(pkg,pmodel,lgr)
+
         return pkg.__class__(cmodel,
                              save_flows=True,
                              print_input=pkg.print_input,
@@ -777,7 +791,7 @@ class NestedDomainSimulation:
                              connectiondata=c_conns,
                              perioddata=dct_c_sp
                              )
-        
+
     @regrid_package.register
     def _(self,
           pkg: flopy.mf6.modflow.mfgwfsfr.ModflowGwfsfr,
@@ -808,7 +822,7 @@ class NestedDomainSimulation:
         if pkg.budget_filerecord.array is not None:
             fn_budget_records = "cname_" + pkg.budget_filerecord.array[0][0]
 
-        #reach_data = self.sfr_reach_data(pkg, lgr)
+        # reach_data = self.sfr_reach_data(pkg, lgr)
 
         df_conns = self._srf_develop_child_connections(pkg, lgr)
 
@@ -826,11 +840,11 @@ class NestedDomainSimulation:
         print("Instantiating new mover package to connect parent-child stream network")
         mvr_packages = [[pmodel_name, ppkg_name[0]], [cmodel_name[0], cpkg_name[0]]]
         mvr = self.new_mover_package(self.sim.gwfgwf,
-                               maxmvr=max([len(per) for per in mvr_period_data.values()]),
-                               packages=mvr_packages,
-                               period_data=mvr_period_data,
-                               name=f"{cname}_mvr.mvr"
-                               )
+                                     maxmvr=max([len(per) for per in mvr_period_data.values()]),
+                                     packages=mvr_packages,
+                                     period_data=mvr_period_data,
+                                     name=f"{cname}_mvr.mvr"
+                                     )
         self.sim.gwfgwf.mvr_filerecord = f"{cname}_mvr.mvr"
 
         if not pmodel.sfr.mover:
@@ -853,8 +867,6 @@ class NestedDomainSimulation:
                              packagedata=package_data,
                              perioddata={0: [[0, "INFLOW", 0.0]]}
                              )
-
-
 
     @regrid_package.register
     def _(self,
@@ -917,7 +929,7 @@ class NestedDomainSimulation:
             A configured ModflowMvr package for managing water transfers.
         """
 
-        modelnames=False
+        modelnames = False
         if isinstance(model, flopy.mf6.ModflowGwfgwf):
             modelnames = True
 
@@ -928,8 +940,7 @@ class NestedDomainSimulation:
                                     packages=packages,
                                     perioddata=period_data,
                                     filename=f"{name}.mvr"
-                                    )        
-
+                                    )
 
     @staticmethod
     def _produce_package_data(pkg, df_conns, ncons, ndivs):
@@ -962,17 +973,16 @@ class NestedDomainSimulation:
         df_reach_data_c['ndivs'] = ndivs
 
         return df_reach_data_c[['cellids',
-                         'lengths',
-                         'rwid',
-                         'rgrd',
-                         'rtp',
-                         'rbth',
-                         'rhk',
-                         'man',
-                         'ncon',
-                         'ustrf',
-                         'ndv']].to_records(index=True)
-        
+                                'lengths',
+                                'rwid',
+                                'rgrd',
+                                'rtp',
+                                'rbth',
+                                'rhk',
+                                'man',
+                                'ncon',
+                                'ustrf',
+                                'ndv']].to_records(index=True)
 
     @staticmethod
     def _generate_mover_period_data(pmodel_name, cmodel_name, ppkg_name, cpkg_name, df_conns):
@@ -1037,8 +1047,8 @@ class NestedDomainSimulation:
             lambda x: x if abs(x) in df_conns.index else np.nan
         ).reset_index().T.apply(lambda x: tuple(x.dropna().astype(int))).to_list()
 
-        nconns = [len(x)-1 for x in ls_conn_data]
-        ndivs = [len(list(filter(lambda i: i<0, x)))-1 for x in ls_conn_data]
+        nconns = [len(x) - 1 for x in ls_conn_data]
+        ndivs = [len(list(filter(lambda i: i < 0, x))) - 1 for x in ls_conn_data]
 
         return ls_conn_data, nconns, ndivs
 
@@ -1161,10 +1171,10 @@ class NestedDomainSimulation:
         dct_arrays = {}
 
         for sp, sp_data in tqdm(rch_rec.data.items()):
-            temp_grid *= 0 ## zero out the matrix
+            temp_grid *= 0  ## zero out the matrix
             for i, rec in enumerate(sp_data):
                 try:
-                    temp_grid[rec[0]] = i + 1 #  required because later indices are extracted for nonzero elements
+                    temp_grid[rec[0]] = i + 1  # required because later indices are extracted for nonzero elements
                 except IndexError as e:
                     print(f"Warning: entry in the list of inputs is outside the model domain")
                     print(e)
@@ -1173,8 +1183,8 @@ class NestedDomainSimulation:
 
             c_temp_array = [self._regrid_data_layers(data, lgr) for sp, data in dct_arrays.items()][0]
             lst_kij = list(zip(*c_temp_array.nonzero()))
-            #lst_sp_rec = [(cid, temp_grid[lgr.get_parent_indices(*cid)]) for cid in lst_kij]
-            lst_sp_rec = [(cid, *tuple(sp_data[c_temp_array[cid]-1])[1:]) for cid in lst_kij] # subtract 1 to index
+            # lst_sp_rec = [(cid, temp_grid[lgr.get_parent_indices(*cid)]) for cid in lst_kij]
+            lst_sp_rec = [(cid, *tuple(sp_data[c_temp_array[cid] - 1])[1:]) for cid in lst_kij]  # subtract 1 to index
 
             dct_recs[sp] = lst_sp_rec
         return dct_recs
@@ -1190,7 +1200,7 @@ class NestedDomainSimulation:
         _, _, kcs = self.get_child_layer_connections(0, kp, lgr)
         ic = (ip - lgr.nprbeg) * lgr.ncpp
         jc = (jp - lgr.npcbeg) * lgr.ncpp
-        return kcs, np.arange(ic, ic+lgr.ncpp), np.arange(jc, jc+lgr.ncpp)
+        return kcs, np.arange(ic, ic + lgr.ncpp), np.arange(jc, jc + lgr.ncpp)
 
     @staticmethod
     def get_child_layer_connections(icounter, kp, lgr):
@@ -1217,7 +1227,7 @@ class NestedDomainSimulation:
                 r[2] = (kc, ic, jc)
                 lst_recs.append(r)
 
-        return pd.DataFrame(lst_recs,columns=recs.dtypes.index)
+        return pd.DataFrame(lst_recs, columns=recs.dtypes.index)
 
     def write_simulation(self, sim_ws: str = None):
         if sim_ws is not None:
