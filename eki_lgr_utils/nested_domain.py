@@ -744,6 +744,10 @@ class NestedDomainSimulation:
                     (c <= lgr.npcend)):
                 lst_c_connections.append(w)
 
+        if not lst_c_connections:
+            print(f"No well connections in maw package {pkg.name}")
+            return
+
         df_cconns = pd.DataFrame.from_records(lst_c_connections,
                                               columns=lst_c_connections[0].dtype.names)
         df_lst_rec = df_cconns.groupby(
@@ -757,24 +761,42 @@ class NestedDomainSimulation:
             self._update_connection_records,
             lgr=lgr,
             include_groups=True)
-        c_conns = df_lst_rec.to_records(index=False)
+
+        #  update index with well ifno with sequence of consecutive integers
+        df_lst_rec.index = df_lst_rec.index.remove_unused_levels().set_levels(np.arange(df_lst_rec.index.size), level=0)
+
+        # create index mapping fron old ifno to new ifno
+        id_map = pd.Series(df_lst_rec.index.get_level_values(0), index=df_lst_rec['ifno']).drop_duplicates()
+
 
         # update ngwfnodes
         df_packagedata = pd.DataFrame.from_records(pkg.packagedata.array, columns=pkg.packagedata.dtype.names)
-        df_c_packagedata = df_packagedata.loc[df_cconns['ifno'].unique()]
-        df_c_packagedata['ngwfnodes'] = df_lst_rec.groupby(level=0).size()
-        c_packagedata = df_c_packagedata.to_records(index=False)
+        #df_c_packagedata = df_packagedata.loc[df_cconns['ifno'].unique()]
+        df_c_packagedata = df_packagedata.loc[id_map.index]
+        #df_c_packagedata['ngwfnodes'] = df_lst_rec.groupby(level=0).size()
 
         # update stress period data
         dct_c_sp = {}
         for i, sp in enumerate(pkg.perioddata.array):
-            dct_c_sp[i] = pd.DataFrame.from_records(sp,
+            df_tmp_rec = pd.DataFrame.from_records(sp,
                                                     columns=sp.dtype.names
-                                                    ).set_index('ifno').loc[df_c_packagedata.index].to_records(
-                index=True)
+                                                    ).set_index('ifno').loc[df_c_packagedata.index]
+            df_tmp_rec.index = df_tmp_rec.index.map(id_map)
+            dct_c_sp[i] = df_tmp_rec.to_records(index=True)
+
+
+        # reindex dataframes
+        df_lst_rec.index = df_lst_rec.index.set_names(['ifno', 'icon'])
+        df_lst_rec = df_lst_rec.drop(['ifno', 'icon'], axis=1).reset_index()
+
+        df_c_packagedata['ifno'] = df_c_packagedata['ifno'].map(id_map)
+
+        # dataframes to records
+        c_conns = df_lst_rec.to_records(index=False)
+        c_packagedata = df_c_packagedata.to_records(index=False)
 
         # drop wells in inactivate parent areas
-        self._drop_wells_parent_domain(pkg,pmodel,lgr)
+        #self._drop_wells_parent_domain(pkg,pmodel,lgr)
 
         return pkg.__class__(cmodel,
                              save_flows=True,
@@ -1166,7 +1188,8 @@ class NestedDomainSimulation:
 
     def _remap_stress_periods(self, rch_rec, lgr, only_top_layer=True):
         dct_recs = {}
-        nlc, nrc, ncc = lgr.child.idomain.shape
+        cidomain = lgr.child.idomain
+        nlc, nrc, ncc = cidomain.shape
         temp_grid = np.zeros_like(lgr.parent.idomain)
         dct_arrays = {}
 
@@ -1184,7 +1207,7 @@ class NestedDomainSimulation:
             c_temp_array = [self._regrid_data_layers(data, lgr) for sp, data in dct_arrays.items()][0]
             lst_kij = list(zip(*c_temp_array.nonzero()))
             # lst_sp_rec = [(cid, temp_grid[lgr.get_parent_indices(*cid)]) for cid in lst_kij]
-            lst_sp_rec = [(cid, *tuple(sp_data[c_temp_array[cid] - 1])[1:]) for cid in lst_kij]  # subtract 1 to index
+            lst_sp_rec = [(cid, *tuple(sp_data[c_temp_array[cid] - 1])[1:]) for cid in lst_kij if cidomain[cid] != 0]  # subtract 1 to index
 
             dct_recs[sp] = lst_sp_rec
         return dct_recs
@@ -1214,6 +1237,7 @@ class NestedDomainSimulation:
     def _update_connection_records(self, recs, lgr):
         next_iconn = 0
         lst_recs = []
+        cidomain = lgr.child.idomain
         for i, rec in recs.iterrows():
 
             kp, ip, jp = rec['cellid']
@@ -1225,8 +1249,11 @@ class NestedDomainSimulation:
                 # Assign values by position index
                 r[1] = iconn
                 r[2] = (kc, ic, jc)
-                lst_recs.append(r)
+                if cidomain[r[2]] != 0:
+                    lst_recs.append(r)
 
+        if not lst_recs:
+            return
         return pd.DataFrame(lst_recs, columns=recs.dtypes.index)
 
     def write_simulation(self, sim_ws: str = None):
