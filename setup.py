@@ -8,7 +8,7 @@ setup(
                       'shapely',
                       'fiona',
                       'rasterio',
-                      'flopy @ git+https://github.com/mmaneta/flopy.git@nonzero_lgr',
+                      'flopy @ git+https://github.com/mmaneta/flopy.git@develop',
                       'jupyterlab', 
                       'tqdm'],
     packages=find_packages(),
