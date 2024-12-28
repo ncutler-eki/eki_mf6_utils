@@ -31,7 +31,7 @@ Activate the environment
 
 Install the library
 
-```pip install git+https://github.com/mmaneta/eki_mf6_utils.git@develop ```
+```pip install git+https://github.com/ncutler-eki/eki_mf6_utils.git@develop ```
 
 
 Example 
